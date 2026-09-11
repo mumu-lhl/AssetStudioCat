@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AssetStudioGUI.Avalonia.ViewModels"
+        x:Class="AssetStudioGUI.Avalonia.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="Settings"
+        Width="620"
+        Height="430"
+        MinWidth="520"
+        MinHeight="390"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="20" RowDefinitions="*,Auto">
+    <ScrollViewer Grid.Row="0">
+      <StackPanel Spacing="10">
+        <TextBlock FontSize="20" FontWeight="SemiBold" Text="Loading and cache" />
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Bundle decompression mode" />
+        <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
+        <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                   Text="Automatic mode uses memory only when the estimated unpacked size fits the conservative memory budget."
+                   TextWrapping="Wrap" />
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Decompression directory" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBox Grid.Column="0" Text="{Binding DecompressionDirectory}" IsEnabled="{Binding IsDiskDirectoryEnabled}" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse…" IsEnabled="{Binding IsDiskDirectoryEnabled}" Click="BrowseDecompressionDirectory" />
+        </Grid>
+
+        <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                   Text="Temporary decompressed files are isolated per session and removed on exit. The reusable asset index is stored separately below."
+                   TextWrapping="Wrap" />
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Persistent cache root" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBox Grid.Column="0" Text="{Binding CacheRoot}" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse…" Click="BrowseCacheRoot" />
+        </Grid>
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Preview cache limit (MB)" />
+        <NumericUpDown Minimum="32" Maximum="4096" Increment="32" Value="{Binding PreviewCacheMegabytes}" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="1" Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button MinWidth="90" Content="Cancel" Click="Cancel" />
+      <Button MinWidth="90" Content="Save" Click="Save" />
+    </StackPanel>
+  </Grid>
+</Window>

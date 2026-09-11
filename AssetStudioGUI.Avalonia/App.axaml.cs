@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using AssetStudio.AppCore.Configuration;
 using AssetStudioGUI.Avalonia.ViewModels;
 using AssetStudioGUI.Avalonia.Views;
 
@@ -17,9 +18,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow
+            var directories = AppDirectories.Detect();
+            var settingsStore = new AppSettingsStore(directories);
+            var settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
+            desktop.MainWindow = new MainWindow(settingsStore)
             {
-                DataContext = new MainViewModel(),
+                DataContext = new MainViewModel(settings),
             };
         }
 

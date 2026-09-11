@@ -23,14 +23,14 @@
         <MenuItem Header="Rebuild index" IsEnabled="False" />
       </MenuItem>
       <MenuItem Header="_Export" IsEnabled="False" />
-      <MenuItem Header="_Settings" IsEnabled="False" />
+      <MenuItem Header="_Settings" Click="OpenSettings" />
     </Menu>
 
     <Border Grid.Row="1" Padding="10,8" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="Auto,Auto,*,260">
         <Button Grid.Column="0" Margin="0,0,8,0" Content="Open files" IsEnabled="False" />
         <Button Grid.Column="1" Margin="0,0,12,0" Content="Open folder" IsEnabled="False" />
-        <TextBox Grid.Column="3" Watermark="Filter by name or container" IsEnabled="False" />
+        <TextBox Grid.Column="3" PlaceholderText="Filter by name or container" IsEnabled="False" />
       </Grid>
     </Border>
 
@@ -87,9 +87,10 @@
     </Grid>
 
     <Border Grid.Row="3" Padding="10,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,220">
+      <Grid ColumnDefinitions="*,Auto,220">
         <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="{Binding StatusText}" />
-        <ProgressBar Grid.Column="1" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
+        <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="{Binding DecompressionSummary}" />
+        <ProgressBar Grid.Column="2" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
       </Grid>
     </Border>
   </Grid>

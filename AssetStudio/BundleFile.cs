@@ -186,6 +186,15 @@ namespace AssetStudio
             if (uncompressedSizeSum < int.MaxValue && !_bundleOptions.DecompressToDisk) 
                 return new MemoryStream((int)uncompressedSizeSum);
 
+            if (!string.IsNullOrWhiteSpace(_bundleOptions.DecompressionDirectory))
+            {
+                var cacheDirectory = _bundleOptions.DecompressionDirectory;
+                Directory.CreateDirectory(cacheDirectory);
+                var fileName = Path.GetFileName(path);
+                var uniqueName = $"{fileName}_{Guid.NewGuid():N}.temp";
+                return new TempFileStream(Path.Combine(cacheDirectory, uniqueName), FileMode.Create);
+            }
+
             if (!Directory.Exists(Path.GetDirectoryName(path)))
             {
                 var tempDir = Path.Combine(Directory.GetCurrentDirectory(), "Studio_temp");
