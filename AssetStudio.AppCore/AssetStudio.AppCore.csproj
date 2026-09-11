@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AssetStudio\AssetStudio.csproj" />
+    <ProjectReference Include="..\AssetStudioUtility\AssetStudioUtility.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AssetStudio.AppCore</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AssetStudioGUI.Avalonia.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DesignWidth="1280"
+        d:DesignHeight="760"
+        x:Class="AssetStudioGUI.Avalonia.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1280"
+        Height="760"
+        MinWidth="900"
+        MinHeight="560"
+        Title="{Binding Title}">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Menu Grid.Row="0">
+      <MenuItem Header="_File">
+        <MenuItem Header="Open files…" IsEnabled="False" />
+        <MenuItem Header="Open folder…" IsEnabled="False" />
+        <Separator />
+        <MenuItem Header="Rebuild index" IsEnabled="False" />
+      </MenuItem>
+      <MenuItem Header="_Export" IsEnabled="False" />
+      <MenuItem Header="_Settings" IsEnabled="False" />
+    </Menu>
+
+    <Border Grid.Row="1" Padding="10,8" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,Auto,*,260">
+        <Button Grid.Column="0" Margin="0,0,8,0" Content="Open files" IsEnabled="False" />
+        <Button Grid.Column="1" Margin="0,0,12,0" Content="Open folder" IsEnabled="False" />
+        <TextBox Grid.Column="3" Watermark="Filter by name or container" IsEnabled="False" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="280,5,*,5,360">
+      <TabControl Grid.Column="0">
+        <TabItem Header="Scene hierarchy">
+          <TextBlock Margin="16" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="Open a source directory to build the hierarchy." TextWrapping="Wrap" />
+        </TabItem>
+        <TabItem Header="Asset classes">
+          <TextBlock Margin="16" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="Class structures will appear here." TextWrapping="Wrap" />
+        </TabItem>
+      </TabControl>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
+
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <Border Padding="8,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="2*,2*,110,100,100">
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Name" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Container" />
+            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Type" />
+            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Path ID" />
+            <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Size" />
+          </Grid>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Assets}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:AssetRowViewModel">
+              <Grid Margin="4,3" ColumnDefinitions="2*,2*,110,100,100">
+                <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding Container}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" Text="{Binding Type}" />
+                <TextBlock Grid.Column="3" Text="{Binding PathId}" />
+                <TextBlock Grid.Column="4" Text="{Binding Size}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" />
+
+      <TabControl Grid.Column="4">
+        <TabItem Header="Preview">
+          <TextBlock Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="Select an asset to preview it." />
+        </TabItem>
+        <TabItem Header="Dump">
+          <TextBox Margin="8" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" />
+        </TabItem>
+        <TabItem Header="Information">
+          <TextBlock Margin="16" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="No asset selected." />
+        </TabItem>
+      </TabControl>
+    </Grid>
+
+    <Border Grid.Row="3" Padding="10,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,220">
+        <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="{Binding StatusText}" />
+        <ProgressBar Grid.Column="1" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
