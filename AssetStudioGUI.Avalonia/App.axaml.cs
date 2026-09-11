@@ -23,7 +23,7 @@ public partial class App : Application
             var settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
             desktop.MainWindow = new MainWindow(settingsStore)
             {
-                DataContext = new MainViewModel(settings),
+                DataContext = new MainViewModel(settings, directories),
             };
         }
 
