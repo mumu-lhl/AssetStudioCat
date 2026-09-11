@@ -1,0 +1,56 @@
+name: Avalonia GUI CI
+
+on:
+  push:
+    branches:
+      - AssetStudioMod
+      - "feature/**"
+  pull_request:
+    branches:
+      - AssetStudioMod
+  workflow_dispatch:
+
+concurrency:
+  group: avalonia-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  AVALONIA_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} / .NET 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore tests
+        run: dotnet restore AssetStudio.AppCore.Tests/AssetStudio.AppCore.Tests.csproj
+
+      - name: Restore Avalonia GUI
+        run: dotnet restore AssetStudioGUI.Avalonia/AssetStudioGUI.Avalonia.csproj
+
+      - name: Run AppCore tests
+        run: dotnet test AssetStudio.AppCore.Tests/AssetStudio.AppCore.Tests.csproj --configuration Release --no-restore --logger "console;verbosity=normal"
+
+      - name: Build Avalonia GUI
+        run: dotnet build AssetStudioGUI.Avalonia/AssetStudioGUI.Avalonia.csproj --configuration Release --no-restore
