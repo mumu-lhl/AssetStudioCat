@@ -84,6 +84,16 @@ session files.
 
 Commits are made at the end of these coherent slices rather than per file.
 
+## Continuous integration and releases
+
+- `Avalonia GUI CI` builds the GUI and runs AppCore tests on Windows, Ubuntu,
+  and macOS for feature-branch pushes and pull requests to `AssetStudioMod`.
+- Pushing a tag matching `v*` runs tests, publishes self-contained packages for
+  `win-x64`, `linux-x64`, `osx-x64`, and `osx-arm64`, generates SHA-256 sums,
+  and creates a GitHub Release with generated notes.
+- Linux and macOS packages use `tar.gz` to retain executable permissions;
+  Windows uses `zip`.
+
 ## Performance targets
 
 - Empty application: below 200 MB working set on a typical desktop.
