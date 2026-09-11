@@ -43,6 +43,7 @@ public sealed class AssetIndexBuilder
         var estimatedExpandedBytes = SaturatingMultiply(fingerprint.TotalBytes, 3);
         using var session = DecompressionSession.Create(_settings, _cacheLayout, estimatedExpandedBytes);
         using var managerScope = new AssetsManagerScope();
+        managerScope.Manager.MetadataOnly = true;
         session.ApplyTo(managerScope.Manager.Options.BundleOptions);
         var previousProgress = Progress.Default;
         try
@@ -65,7 +66,7 @@ public sealed class AssetIndexBuilder
             Progress.Default = previousProgress;
         }
 
-        var count = managerScope.Manager.AssetsFileList.Sum(file => (long)file.Objects.Count);
+        var count = managerScope.Manager.AssetsFileList.Sum(file => (long)file.m_Objects.Count);
         return new AssetIndexBuildResult(
             index,
             fingerprint,
@@ -82,19 +83,27 @@ public sealed class AssetIndexBuilder
         long id = 0;
         foreach (var file in manager.AssetsFileList)
         {
-            var locations = file.m_Objects.ToDictionary(info => info.m_PathID);
-            foreach (var asset in file.Objects)
+            foreach (var location in file.m_Objects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var location = locations[asset.m_PathID];
+                global::AssetStudio.Object? asset = null;
+                try
+                {
+                    asset = manager.MaterializeObject(file, location);
+                }
+                catch (Exception exception)
+                {
+                    Logger.Warning($"Unable to index {file.fileName} PathID {location.m_PathID}: {exception.Message}");
+                }
+
                 yield return new AssetIndexEntry(
                     id++,
                     sourceRoot,
                     file.fullName,
-                    asset.m_PathID,
-                    asset.classID,
-                    asset.type.ToString(),
-                    ResolveName(asset),
+                    location.m_PathID,
+                    location.classID,
+                    ((ClassIDType)location.classID).ToString(),
+                    asset is null ? $"{(ClassIDType)location.classID} #{location.m_PathID}" : ResolveName(asset),
                     null,
                     location.byteStart,
                     location.byteSize);

@@ -35,8 +35,8 @@ destroying the others:
   is storage-agnostic; the first backend uses JSON-lines plus a binary seek table
   so packaging has no native database dependency. SQLite remains a compatible
   future backend.
-- A decompression cache stores seekable bundle data either for the current
-  session or persistently, according to user settings.
+- A decompression workspace stores seekable bundle data for the current session
+  at the user-selected location and removes it on clean exit.
 - A bounded preview cache stores thumbnails and recently decoded previews.
 
 An index is built in a temporary directory and atomically promoted only after
@@ -57,9 +57,10 @@ The final low-memory path is deliberately different from the existing
    bounded LRU cache.
 6. Pin an Animator dependency closure while FBX export runs, then release it.
 
-The first implementation milestone may use the existing eager parser as a
-compatibility path, but it must be visibly labelled and must not be confused
-with the completed low-memory loader.
+The index builder now keeps serialized-file metadata and materializes one typed
+object at a time to obtain its display name. Objects are discarded as their rows
+are written, so the complete typed-object graph is never retained. A later
+name-only reader can reduce transient allocations further.
 
 ## Decompression settings
 
@@ -68,8 +69,8 @@ Auto mode uses a conservative memory budget and falls back to disk before load.
 The UI performs write-access and free-space checks before starting a disk load.
 
 Session data is stored under an isolated directory. Normal close removes
-session-only data, and startup cleanup handles abandoned sessions. Persistent
-decompressed data uses source fingerprints in its path.
+session-only data; the reusable asset index is independent of decompressed
+session files.
 
 ## Delivery slices
 

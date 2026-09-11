@@ -86,7 +86,7 @@ public partial class MainViewModel : ViewModelBase
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
                 ? $"Opened cached index: {result.AssetCount:N0} assets"
-                : $"Built compatibility index: {result.AssetCount:N0} assets; {result.Decompression.Mode} decompression";
+                : $"Built streaming index: {result.AssetCount:N0} assets; {result.Decompression.Mode} decompression";
         }
         catch (Exception exception)
         {

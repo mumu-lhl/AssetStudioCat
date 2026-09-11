@@ -17,6 +17,7 @@ namespace AssetStudio
     {
         public bool LoadViaTypeTree = true;
         public bool MeshLazyLoad = true;
+        public bool MetadataOnly;
         public ImportOptions Options = new ImportOptions();
         public readonly List<Action<OptionsFile>> OptionLoaders = new List<Action<OptionsFile>>();
         public readonly List<SerializedFile> AssetsFileList = new List<SerializedFile>();
@@ -158,8 +159,68 @@ namespace AssetStudio
             if (AssetsFileList.Count == 0)
                 return;
 
+            if (MetadataOnly)
+                return;
+
             ReadAssets();
             ProcessAssets();
+        }
+
+        public Object MaterializeObject(SerializedFile assetsFile, ObjectInfo objectInfo)
+        {
+            var objectReader = new ObjectReader(assetsFile.reader, assetsFile, objectInfo);
+            var jsonOptions = new JsonSerializerOptions
+            {
+                Converters = { new JsonConverterHelper.ByteArrayConverter(), new JsonConverterHelper.PPtrConverter(), new JsonConverterHelper.KVPConverter() },
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+                PropertyNameCaseInsensitive = true,
+                IncludeFields = true,
+            };
+
+            return objectReader.type switch
+            {
+                ClassIDType.Animation => new Animation(objectReader),
+                ClassIDType.AnimationClip => objectReader.serializedType?.m_Type != null && LoadViaTypeTree
+                    ? new AnimationClip(objectReader, TypeTreeHelper.ReadTypeByteArray(objectReader.serializedType.m_Type, objectReader), jsonOptions, objectInfo)
+                    : new AnimationClip(objectReader),
+                ClassIDType.Animator => new Animator(objectReader),
+                ClassIDType.AnimatorController => new AnimatorController(objectReader),
+                ClassIDType.AnimatorOverrideController => new AnimatorOverrideController(objectReader),
+                ClassIDType.AssetBundle => new AssetBundle(objectReader),
+                ClassIDType.AudioClip => new AudioClip(objectReader),
+                ClassIDType.Avatar => new Avatar(objectReader),
+                ClassIDType.BuildSettings => new BuildSettings(objectReader),
+                ClassIDType.Font => new Font(objectReader),
+                ClassIDType.GameObject => new GameObject(objectReader),
+                ClassIDType.Material => objectReader.serializedType?.m_Type != null && LoadViaTypeTree
+                    ? new Material(objectReader, TypeTreeHelper.ReadTypeByteArray(objectReader.serializedType.m_Type, objectReader), jsonOptions)
+                    : new Material(objectReader),
+                ClassIDType.Mesh => new Mesh(objectReader),
+                ClassIDType.MeshFilter => new MeshFilter(objectReader),
+                ClassIDType.MeshRenderer => new MeshRenderer(objectReader),
+                ClassIDType.MonoBehaviour => new MonoBehaviour(objectReader),
+                ClassIDType.MonoScript => new MonoScript(objectReader),
+                ClassIDType.MovieTexture => new MovieTexture(objectReader),
+                ClassIDType.PlayerSettings => new PlayerSettings(objectReader),
+                ClassIDType.PreloadData => new PreloadData(objectReader),
+                ClassIDType.RectTransform => new RectTransform(objectReader),
+                ClassIDType.Shader when objectReader.version < 2021 => new Shader(objectReader),
+                ClassIDType.Shader => null,
+                ClassIDType.SkinnedMeshRenderer => new SkinnedMeshRenderer(objectReader),
+                ClassIDType.Sprite => new Sprite(objectReader),
+                ClassIDType.SpriteAtlas => new SpriteAtlas(objectReader),
+                ClassIDType.TextAsset => new TextAsset(objectReader),
+                ClassIDType.Texture2D => objectReader.serializedType?.m_Type != null && LoadViaTypeTree
+                    ? new Texture2D(objectReader, TypeTreeHelper.ReadTypeByteArray(objectReader.serializedType.m_Type, objectReader), jsonOptions)
+                    : new Texture2D(objectReader),
+                ClassIDType.Texture2DArray => objectReader.serializedType?.m_Type != null && LoadViaTypeTree
+                    ? new Texture2DArray(objectReader, TypeTreeHelper.ReadTypeByteArray(objectReader.serializedType.m_Type, objectReader), jsonOptions)
+                    : new Texture2DArray(objectReader),
+                ClassIDType.Transform => new Transform(objectReader),
+                ClassIDType.VideoClip => new VideoClip(objectReader),
+                ClassIDType.ResourceManager => new ResourceManager(objectReader),
+                _ => new Object(objectReader),
+            };
         }
 
         private bool LoadFile(string fullName)
