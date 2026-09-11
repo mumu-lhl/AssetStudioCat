@@ -87,4 +87,18 @@ public partial class MainWindow : Window
             await viewModel.NextPageAsync();
         }
     }
+
+    private async void AssetSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && sender is ListBox listBox)
+        {
+            await viewModel.SelectAssetAsync(listBox.SelectedItem as AssetRowViewModel);
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        (DataContext as IDisposable)?.Dispose();
+        base.OnClosed(e);
+    }
 }

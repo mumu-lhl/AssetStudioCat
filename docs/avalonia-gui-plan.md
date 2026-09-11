@@ -62,6 +62,12 @@ object at a time to obtain its display name. Objects are discarded as their rows
 are written, so the complete typed-object graph is never retained. A later
 name-only reader can reduce transient allocations further.
 
+Each index row also records the top-level source file, internal serialized-file
+path, and PathID. Selecting a Texture2D reopens only that source file, resolves
+one object, converts it to PNG, and closes the object session. Encoded previews
+use a byte-bounded in-memory LRU; the Avalonia view retains only the displayed
+decoded bitmap.
+
 ## Decompression settings
 
 Users can select `Auto`, `Memory`, or `Disk` and can choose the disk cache root.

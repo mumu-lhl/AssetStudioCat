@@ -79,6 +79,7 @@ public sealed class DiskAssetIndexTests : IDisposable
             yield return new AssetIndexEntry(
                 i,
                 "/source",
+                "/source/bundle-a",
                 "data.assets",
                 i + 1,
                 i % 2 == 0 ? 28 : 49,

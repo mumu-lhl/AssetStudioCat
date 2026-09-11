@@ -3,6 +3,7 @@ namespace AssetStudio.AppCore.Indexing;
 public sealed record AssetIndexEntry(
     long Id,
     string SourcePath,
+    string ObjectSourcePath,
     string SerializedFile,
     long PathId,
     int ClassId,

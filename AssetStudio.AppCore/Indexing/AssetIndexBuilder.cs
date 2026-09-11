@@ -99,6 +99,7 @@ public sealed class AssetIndexBuilder
                 yield return new AssetIndexEntry(
                     id++,
                     sourceRoot,
+                    file.originalPath ?? file.fullName,
                     file.fullName,
                     location.m_PathID,
                     location.classID,

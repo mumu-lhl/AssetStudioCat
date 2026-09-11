@@ -2,15 +2,20 @@ using System.Collections.ObjectModel;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Indexing;
+using AssetStudio.AppCore.Loading;
+using AssetStudio.AppCore.Preview;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AssetStudioGUI.Avalonia.ViewModels;
 
-public partial class MainViewModel : ViewModelBase
+public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private const int PageSize = 250;
     private readonly AppDirectories _directories;
     private DiskAssetIndex? _currentIndex;
+    private TexturePreviewService? _previewService;
+    private CancellationTokenSource? _previewCancellation;
     private string? _sourcePath;
     private int _pageOffset;
 
@@ -62,6 +67,18 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsPreviewBusy { get; set; }
+
+    [ObservableProperty]
+    public partial Bitmap? PreviewImage { get; set; }
+
+    [ObservableProperty]
+    public partial string PreviewMessage { get; set; } = "Select a Texture2D asset to preview it.";
+
+    [ObservableProperty]
+    public partial string AssetInformation { get; set; } = "No asset selected.";
+
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
         if (IsBusy)
@@ -82,6 +99,9 @@ public partial class MainViewModel : ViewModelBase
             var result = await Task.Run(() => builder.OpenAsync(sourcePath, forceRebuild, progress));
             _sourcePath = result.Fingerprint.RootPath;
             _currentIndex = result.Index;
+            _previewService = new TexturePreviewService(
+                new AssetObjectLoader(settings, layout),
+                new MemoryPreviewCache(settings.PreviewCacheMegabytes));
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -116,6 +136,64 @@ public partial class MainViewModel : ViewModelBase
         ? LoadPageAsync(offset)
         : Task.CompletedTask;
 
+    public async Task SelectAssetAsync(AssetRowViewModel? row)
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation?.Dispose();
+        _previewCancellation = new CancellationTokenSource();
+        var cancellationToken = _previewCancellation.Token;
+        IsPreviewBusy = false;
+
+        var previousImage = PreviewImage;
+        PreviewImage = null;
+        previousImage?.Dispose();
+        if (row is null)
+        {
+            PreviewMessage = "Select a Texture2D asset to preview it.";
+            AssetInformation = "No asset selected.";
+            return;
+        }
+
+        AssetInformation = $"{row.Name}\n{row.Type}\nPathID: {row.PathId}\nStored size: {row.Size:N0} bytes";
+        if (!row.Type.Equals("Texture2D", StringComparison.Ordinal))
+        {
+            PreviewMessage = $"Preview for {row.Type} is not implemented yet.";
+            return;
+        }
+        if (_previewService is null)
+        {
+            PreviewMessage = "The source index is not open.";
+            return;
+        }
+
+        IsPreviewBusy = true;
+        PreviewMessage = "Loading Texture2D from its source bundle…";
+        try
+        {
+            var preview = await _previewService.LoadAsync(row.IndexEntry, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var stream = new MemoryStream(preview.PngData, writable: false);
+            PreviewImage = new Bitmap(stream);
+            PreviewMessage = preview.FromCache ? "Decoded preview cache hit" : string.Empty;
+            AssetInformation = preview.Information;
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer selection superseded this preview.
+        }
+        catch (Exception exception)
+        {
+            PreviewMessage = $"Preview failed: {exception.Message}";
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                IsPreviewBusy = false;
+            }
+        }
+    }
+
     private async Task LoadPageAsync(int offset)
     {
         if (_currentIndex is null)
@@ -132,7 +210,8 @@ public partial class MainViewModel : ViewModelBase
                 entry.Container ?? string.Empty,
                 entry.TypeName,
                 entry.PathId,
-                entry.ByteSize));
+                entry.ByteSize,
+                entry));
         }
         _pageOffset = page.Offset;
         NextOffset = page.NextOffset;
@@ -152,6 +231,13 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanGoNext));
     }
 
+    public void Dispose()
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation?.Dispose();
+        PreviewImage?.Dispose();
+    }
+
     private static AppSettings CreateDefaultSettings()
     {
         var directories = AppDirectories.Detect();
@@ -164,4 +250,5 @@ public sealed record AssetRowViewModel(
     string Container,
     string Type,
     long PathId,
-    long Size);
+    long Size,
+    AssetIndexEntry IndexEntry);

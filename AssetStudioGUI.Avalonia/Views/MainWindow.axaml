@@ -56,7 +56,7 @@
             <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Size" />
           </Grid>
         </Border>
-        <ListBox Grid.Row="1" ItemsSource="{Binding Assets}">
+        <ListBox Grid.Row="1" ItemsSource="{Binding Assets}" SelectionChanged="AssetSelectionChanged">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:AssetRowViewModel">
               <Grid Margin="4,3" ColumnDefinitions="2*,2*,110,100,100">
@@ -82,13 +82,21 @@
 
       <TabControl Grid.Column="4">
         <TabItem Header="Preview">
-          <TextBlock Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="Select an asset to preview it." />
+          <Grid RowDefinitions="*,Auto,Auto">
+            <Border Grid.Row="0" Margin="8" Background="{DynamicResource ThemeBackgroundLowBrush}">
+              <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+            </Border>
+            <TextBlock Grid.Row="1" Margin="12,6" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                       Text="{Binding PreviewMessage}" TextWrapping="Wrap" />
+            <ProgressBar Grid.Row="2" Margin="12,0,12,12" Height="5" IsIndeterminate="True" IsVisible="{Binding IsPreviewBusy}" />
+          </Grid>
         </TabItem>
         <TabItem Header="Dump">
           <TextBox Margin="8" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" />
         </TabItem>
         <TabItem Header="Information">
-          <TextBlock Margin="16" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="No asset selected." />
+          <TextBlock Margin="16" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="{Binding AssetInformation}" TextWrapping="Wrap" />
         </TabItem>
       </TabControl>
     </Grid>
