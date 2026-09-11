@@ -30,13 +30,16 @@ The design has two equally important goals:
 The application uses separate cache classes so users can clean one without
 destroying the others:
 
-- A persistent SQLite asset index stores source fingerprints, object locations,
-  names, types, containers, hierarchy edges, and dependency hints.
+- A persistent paged asset index stores source fingerprints, object locations,
+  names, types, containers, hierarchy edges, and dependency hints. Its interface
+  is storage-agnostic; the first backend uses JSON-lines plus a binary seek table
+  so packaging has no native database dependency. SQLite remains a compatible
+  future backend.
 - A decompression cache stores seekable bundle data either for the current
   session or persistently, according to user settings.
 - A bounded preview cache stores thumbnails and recently decoded previews.
 
-An index is built into a temporary database and atomically promoted only after
+An index is built in a temporary directory and atomically promoted only after
 the scan succeeds. Source size and last-write time provide the fast validity
 check; a content fingerprint protects against ambiguous changes. Users can
 rebuild the whole index or only changed sources.
@@ -47,7 +50,7 @@ The final low-memory path is deliberately different from the existing
 `AssetsManager.ReadAssets()` path:
 
 1. Scan bundle and serialized-file metadata.
-2. Stream minimal rows into SQLite instead of retaining every `Object`.
+2. Stream minimal rows into the persistent index instead of retaining every `Object`.
 3. Query only the page needed by the asset list or expanded hierarchy node.
 4. Materialize a typed object only for preview, inspection, or export.
 5. Resolve `PPtr` references through a lazy object store and retain objects in a
@@ -72,7 +75,7 @@ decompressed data uses source fingerprints in its path.
 
 1. Solution scaffold and application shell.
 2. Cross-platform settings, cache layout, and configurable decompression mode.
-3. SQLite index schema, validation, rebuild, and paged queries.
+3. Persistent index schema, validation, rebuild, and paged queries.
 4. Folder loading, progress/cancellation, asset list, filtering, and sorting.
 5. Lazy object resolver plus text and Texture2D previews.
 6. Converted/raw/dump export and Animator dependency loading/FBX export.
