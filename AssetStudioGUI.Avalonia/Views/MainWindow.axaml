@@ -286,22 +286,22 @@
             <Border Grid.Row="0" Margin="8" Background="{DynamicResource ThemeBackgroundLowBrush}">
               <Grid>
                 <Image Source="{Binding PreviewImage}" Stretch="Uniform" IsVisible="{Binding ShowPreviewImage}" />
-                <Grid IsVisible="{Binding HasPreviewMesh}">
+                <Grid Background="Transparent" IsVisible="{Binding HasPreviewMesh}">
                   <controls:MeshViewportControl Name="MeshViewport"
                                                 MeshGeometry="{Binding PreviewMeshGeometry}"
                                                 WireframeMode="{Binding MeshWireframeMode}"
                                                 ShadeMode="{Binding MeshShadeMode}"
                                                 UseCalculatedNormals="{Binding MeshUseCalculatedNormals}" />
-                  <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8"
+                  <Border IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8"
                           Background="#D0202328" CornerRadius="6" Padding="6,4">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel IsHitTestVisible="True" Orientation="Horizontal" Spacing="6">
                       <Button Content="{Binding MeshWireframeButtonText}" Click="CycleMeshWireframe" Padding="8,4" />
                       <Button Content="{Binding MeshShadeButtonText}" Click="CycleMeshShade" Padding="8,4" />
                       <Button Content="{Binding MeshNormalsButtonText}" Click="ToggleMeshNormals" Padding="8,4" />
                       <Button Content="{Binding L[ResetCamera]}" Click="ResetMeshCamera" Padding="8,4" />
                     </StackPanel>
                   </Border>
-                  <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8"
+                  <Border IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8"
                           Background="#B016181B" CornerRadius="4" Padding="8,3">
                     <TextBlock Text="{Binding L[MeshInteractionTip]}"
                                FontSize="11" Foreground="#DDD" />
