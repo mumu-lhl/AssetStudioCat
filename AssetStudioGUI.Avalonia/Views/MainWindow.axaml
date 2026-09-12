@@ -17,7 +17,7 @@
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <Menu Grid.Row="0">
       <MenuItem Header="_File">
-        <MenuItem Header="Open files…" IsEnabled="False" />
+        <MenuItem Header="Open files…" Click="OpenFiles" />
         <MenuItem Header="Open folder…" Click="OpenFolder" />
         <Separator />
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
@@ -47,7 +47,7 @@
 
     <Border Grid.Row="1" Padding="10,8" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="Auto,Auto,*,180,260">
-        <Button Grid.Column="0" Margin="0,0,8,0" Content="Open files" IsEnabled="False" />
+        <Button Grid.Column="0" Margin="0,0,8,0" Content="Open files" Click="OpenFiles" />
         <Button Grid.Column="1" Margin="0,0,12,0" Content="Open folder" Click="OpenFolder" />
         <ComboBox Grid.Column="3" Margin="0,0,8,0" ItemsSource="{Binding AssetTypes}" SelectedItem="{Binding SelectedType}" SelectionChanged="TypeFilterChanged" />
         <TextBox Grid.Column="4" PlaceholderText="Filter by name or container" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />

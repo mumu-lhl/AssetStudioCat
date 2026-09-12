@@ -23,11 +23,33 @@ public sealed class AssetIndexBuilder
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        _cacheLayout.EnsureCreated();
         var fingerprint = await Task.Run(
             () => AssetSourceFingerprint.Create(sourcePath, cancellationToken),
             cancellationToken);
-        var index = new DiskAssetIndex(_cacheLayout.Indexes, fingerprint.RootPath);
+        return await OpenCoreAsync([sourcePath], fingerprint, forceRebuild, progress, cancellationToken);
+    }
+
+    public async Task<AssetIndexBuildResult> OpenFilesAsync(
+        IReadOnlyList<string> sourceFiles,
+        bool forceRebuild = false,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fingerprint = await Task.Run(
+            () => AssetSourceFingerprint.CreateFiles(sourceFiles, cancellationToken),
+            cancellationToken);
+        return await OpenCoreAsync(sourceFiles, fingerprint, forceRebuild, progress, cancellationToken);
+    }
+
+    private async Task<AssetIndexBuildResult> OpenCoreAsync(
+        IReadOnlyList<string> sourcePaths,
+        AssetSourceFingerprint fingerprint,
+        bool forceRebuild,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        _cacheLayout.EnsureCreated();
+        var index = new DiskAssetIndex(_cacheLayout.Indexes, fingerprint.IndexKey);
         if (!forceRebuild && await index.IsCurrentAsync(fingerprint, cancellationToken))
         {
             var page = await index.QueryAsync(new AssetIndexQuery(Limit: 1), cancellationToken);
@@ -54,11 +76,11 @@ public sealed class AssetIndexBuilder
             }
 
             await Task.Run(
-                () => managerScope.Manager.LoadFilesAndFolders(fingerprint.RootPath),
+                () => managerScope.Manager.LoadFilesAndFolders(sourcePaths.ToArray()),
                 cancellationToken);
             await index.BuildAsync(
                 fingerprint,
-                EnumerateEntries(managerScope.Manager, fingerprint.RootPath, cancellationToken),
+                EnumerateEntries(managerScope.Manager, fingerprint.IndexKey, cancellationToken),
                 cancellationToken);
         }
         finally

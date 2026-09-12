@@ -26,7 +26,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _dumpCancellation;
     private CancellationTokenSource? _exportCancellation;
     private readonly List<AssetRowViewModel> _selectedAssets = [];
-    private string? _sourcePath;
+    private IReadOnlyList<string> _sourcePaths = [];
+    private bool _openedAsFileSelection;
     private int _pageOffset;
 
     public MainViewModel()
@@ -52,7 +53,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public AppSettings Settings { get; }
 
-    public bool HasSource => _sourcePath is not null;
+    public bool HasSource => _sourcePaths.Count > 0;
 
     public bool CanGoPrevious => !IsBusy && _pageOffset > 0;
 
@@ -133,6 +134,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
+        await OpenSourcesAsync([sourcePath], false, forceRebuild);
+    }
+
+    public async Task OpenFilesAsync(IReadOnlyList<string> sourceFiles, bool forceRebuild = false)
+    {
+        await OpenSourcesAsync(sourceFiles, true, forceRebuild);
+    }
+
+    private async Task OpenSourcesAsync(
+        IReadOnlyList<string> sourcePaths,
+        bool fileSelection,
+        bool forceRebuild)
+    {
         if (IsBusy)
         {
             return;
@@ -148,8 +162,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var layout = new CacheLayout(settings);
             var builder = new AssetIndexBuilder(settings, layout);
             var progress = new Progress<int>(value => ProgressValue = value);
-            var result = await Task.Run(() => builder.OpenAsync(sourcePath, forceRebuild, progress));
-            _sourcePath = result.Fingerprint.RootPath;
+            var result = fileSelection
+                ? await builder.OpenFilesAsync(sourcePaths, forceRebuild, progress)
+                : await builder.OpenAsync(sourcePaths[0], forceRebuild, progress);
+            _sourcePaths = sourcePaths.Select(Path.GetFullPath).ToArray();
+            _openedAsFileSelection = fileSelection;
             _currentIndex = result.Index;
             _previewService = new TexturePreviewService(
                 new AssetObjectLoader(settings, layout),
@@ -188,9 +205,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public Task RebuildAsync() => _sourcePath is null
+    public Task RebuildAsync() => _sourcePaths.Count == 0
         ? Task.CompletedTask
-        : OpenSourceAsync(_sourcePath, true);
+        : OpenSourcesAsync(_sourcePaths, _openedAsFileSelection, true);
 
     public Task ApplyFilterAsync()
     {

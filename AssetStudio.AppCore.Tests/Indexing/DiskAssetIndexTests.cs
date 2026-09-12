@@ -93,6 +93,26 @@ public sealed class DiskAssetIndexTests : IDisposable
         Assert.Equal(10, counts["TextAsset"]);
     }
 
+    [Fact]
+    public void FileSelectionsHaveStableDistinctCacheKeys()
+    {
+        var source = CreateSourceDirectory();
+        var first = Path.Combine(source, "bundle-a");
+        var second = Path.Combine(source, "bundle-b");
+        File.WriteAllText(second, "second");
+
+        var one = AssetSourceFingerprint.CreateFiles([first, second]);
+        var reordered = AssetSourceFingerprint.CreateFiles([second, first]);
+        var subset = AssetSourceFingerprint.CreateFiles([first]);
+        File.AppendAllText(first, "changed");
+        var changed = AssetSourceFingerprint.CreateFiles([first, second]);
+
+        Assert.Equal(one.IndexKey, reordered.IndexKey);
+        Assert.NotEqual(one.IndexKey, subset.IndexKey);
+        Assert.Equal(one.IndexKey, changed.IndexKey);
+        Assert.NotEqual(one.Digest, changed.Digest);
+    }
+
     private string CreateSourceDirectory()
     {
         var source = Path.Combine(_root, "source");

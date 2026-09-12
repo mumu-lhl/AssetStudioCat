@@ -57,6 +57,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OpenFiles(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open AssetBundle or assets files",
+            AllowMultiple = true,
+            FileTypeFilter = [new FilePickerFileType("Unity assets") { Patterns = ["*"] }],
+        });
+        var paths = files.Select(file => file.TryGetLocalPath()).Where(path => path is not null).Cast<string>().ToArray();
+        if (paths.Length > 0)
+        {
+            await viewModel.OpenFilesAsync(paths);
+        }
+    }
+
     private async void RebuildIndex(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)
