@@ -180,6 +180,166 @@ public sealed class DiskAssetIndexTests : IDisposable
             28, "Texture2D", "unrelated", null, 384, 64);
     }
 
+    [Fact]
+    public async Task ResumeInterruptedBuildCompletesSuccessfully()
+    {
+        var source = CreateSourceDirectory();
+        var fileA = Path.Combine(source, "bundle-a");
+        var fileB = Path.Combine(source, "bundle-b");
+        File.WriteAllText(fileB, "bundle-b-content");
+
+        var sourceFiles = new[] { fileA, fileB };
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+
+        // Step 1: Simulate interrupted build by indexing only fileA and not finalizing
+        var initialState = await index.CheckResumeStateAsync(sourceFiles);
+        var appender = await index.CreateAppenderAsync(initialState);
+        var entryA = new AssetIndexEntry(
+            0, source, fileA, "data.assets", 1, 28, "Texture2D", "asset-a", "container-a", 0, 100);
+        appender.Containers["data.assets:1"] = "container-a";
+        appender.AppendEntry(entryA);
+        await appender.CommitBatchAsync([fileA], 1);
+        await appender.DisposeAsync();
+
+        // Step 2: Check resume state - should see fileA indexed, fileB remaining
+        var resumeState = await index.CheckResumeStateAsync(sourceFiles);
+        Assert.True(resumeState.CanResume);
+        Assert.NotNull(resumeState.Checkpoint);
+        Assert.True(resumeState.Checkpoint.IndexedFiles.ContainsKey(fileA));
+        Assert.Single(resumeState.RemainingFiles);
+        Assert.Equal(fileB, resumeState.RemainingFiles[0]);
+        Assert.Equal(1, resumeState.ExistingEntryCount);
+
+        // Step 3: Resume by appending fileB and finalizing
+        var resumeAppender = await index.CreateAppenderAsync(resumeState);
+        Assert.Equal(1, resumeAppender.CurrentEntryCount);
+        var entryB = new AssetIndexEntry(
+            1, source, fileB, "data2.assets", 2, 49, "TextAsset", "asset-b", "container-b", 0, 200);
+        resumeAppender.Containers["data2.assets:2"] = "container-b";
+        resumeAppender.AppendEntry(entryB);
+        await resumeAppender.CommitBatchAsync([fileB], 1);
+        await resumeAppender.FinalizeAsync(AssetSourceFingerprint.CreateFiles(sourceFiles));
+        await resumeAppender.DisposeAsync();
+
+        // Step 4: Verify index validity and query results
+        var fingerprint = AssetSourceFingerprint.CreateFiles(sourceFiles);
+        Assert.True(await index.IsCurrentAsync(fingerprint));
+
+        var queryResult = await index.QueryAsync(new AssetIndexQuery(Limit: 10));
+        Assert.Equal(2, queryResult.TotalCount);
+        Assert.Equal(2, queryResult.Items.Count);
+        Assert.Equal("asset-a", queryResult.Items[0].Name);
+        Assert.Equal("asset-b", queryResult.Items[1].Name);
+        Assert.Equal(0, queryResult.Items[0].Id);
+        Assert.Equal(1, queryResult.Items[1].Id);
+    }
+
+    [Fact]
+    public async Task IncrementalUpdateAppendsNewSourceFiles()
+    {
+        var source = CreateSourceDirectory();
+        var fileA = Path.Combine(source, "bundle-a");
+        var fileB = Path.Combine(source, "bundle-b");
+
+        // Initial build with only fileA
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+        var initialAppender = await index.CreateAppenderAsync(new IndexResumeState(false, null, [fileA], 0));
+        initialAppender.AppendEntry(new AssetIndexEntry(0, source, fileA, "data.assets", 1, 28, "Texture2D", "asset-a", null, 0, 100));
+        await initialAppender.CommitBatchAsync([fileA], 1);
+        await initialAppender.FinalizeAsync(AssetSourceFingerprint.CreateFiles([fileA]));
+        await initialAppender.DisposeAsync();
+
+        // Add fileB to the folder
+        File.WriteAllText(fileB, "bundle-b-content");
+        var allFiles = new[] { fileA, fileB };
+
+        // Verify incremental resume state recognizes fileA as indexed and fileB as remaining
+        var resumeState = await index.CheckResumeStateAsync(allFiles);
+        Assert.True(resumeState.CanResume);
+        Assert.NotNull(resumeState.Checkpoint);
+        Assert.True(resumeState.Checkpoint.IndexedFiles.ContainsKey(fileA));
+        Assert.Single(resumeState.RemainingFiles);
+        Assert.Equal(fileB, resumeState.RemainingFiles[0]);
+
+        // Append fileB
+        var appender = await index.CreateAppenderAsync(resumeState);
+        Assert.Equal(1, appender.CurrentEntryCount);
+        appender.AppendEntry(new AssetIndexEntry(1, source, fileB, "data.assets", 2, 49, "TextAsset", "asset-b", null, 0, 50));
+        await appender.CommitBatchAsync([fileB], 1);
+        await appender.FinalizeAsync(AssetSourceFingerprint.CreateFiles(allFiles));
+        await appender.DisposeAsync();
+
+        // Verify query returns both assets
+        var page = await index.QueryAsync(new AssetIndexQuery(Limit: 10));
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(["asset-a", "asset-b"], page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task ModifiedSourceFileInvalidatesResume()
+    {
+        var source = CreateSourceDirectory();
+        var fileA = Path.Combine(source, "bundle-a");
+        var fileB = Path.Combine(source, "bundle-b");
+        File.WriteAllText(fileB, "bundle-b-content");
+
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+        var initialAppender = await index.CreateAppenderAsync(new IndexResumeState(false, null, [fileA], 0));
+        initialAppender.AppendEntry(new AssetIndexEntry(0, source, fileA, "data.assets", 1, 28, "Texture2D", "asset-a", null, 0, 100));
+        await initialAppender.CommitBatchAsync([fileA], 1);
+        await initialAppender.FinalizeAsync(AssetSourceFingerprint.CreateFiles([fileA]));
+        await initialAppender.DisposeAsync();
+
+        // Wait a tick or modify fileA content
+        File.AppendAllText(fileA, "modified-content");
+
+        // CheckResumeState should fail resume
+        var resumeState = await index.CheckResumeStateAsync([fileA, fileB]);
+        Assert.False(resumeState.CanResume);
+    }
+
+    [Fact]
+    public async Task CorruptedUncommittedBatchIsRolledBackOnResume()
+    {
+        var source = CreateSourceDirectory();
+        var fileA = Path.Combine(source, "bundle-a");
+        var fileB = Path.Combine(source, "bundle-b");
+        File.WriteAllText(fileB, "bundle-b-content");
+
+        var allFiles = new[] { fileA, fileB };
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+
+        // Commit fileA
+        var initialAppender = await index.CreateAppenderAsync(new IndexResumeState(false, null, allFiles.ToList(), 0));
+        initialAppender.AppendEntry(new AssetIndexEntry(0, source, fileA, "data.assets", 1, 28, "Texture2D", "asset-a", null, 0, 100));
+        await initialAppender.CommitBatchAsync([fileA], 1);
+        await initialAppender.DisposeAsync();
+
+        // Simulate a crash that wrote corrupt uncommitted partial bytes to assets.jsonl & assets.offsets
+        var rowsPath = Path.Combine(index.DirectoryPath, "assets.jsonl");
+        var offsetsPath = Path.Combine(index.DirectoryPath, "assets.offsets");
+        await File.AppendAllTextAsync(rowsPath, "{ corrupt partial json\n");
+        await File.AppendAllTextAsync(offsetsPath, "corrupt");
+
+        // Now resume: CreateAppenderAsync should rollback to checkpoint
+        var resumeState = await index.CheckResumeStateAsync(allFiles);
+        Assert.True(resumeState.CanResume);
+        var resumeAppender = await index.CreateAppenderAsync(resumeState);
+        Assert.Equal(1, resumeAppender.CurrentEntryCount);
+
+        // Append fileB and finalize
+        resumeAppender.AppendEntry(new AssetIndexEntry(1, source, fileB, "data.assets", 2, 49, "TextAsset", "asset-b", null, 0, 50));
+        await resumeAppender.CommitBatchAsync([fileB], 1);
+        await resumeAppender.FinalizeAsync(AssetSourceFingerprint.CreateFiles(allFiles));
+        await resumeAppender.DisposeAsync();
+
+        // Check that querying works without any JSON parse errors and has exactly 2 entries
+        var page = await index.QueryAsync(new AssetIndexQuery(Limit: 10));
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal("asset-a", page.Items[0].Name);
+        Assert.Equal("asset-b", page.Items[1].Name);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

@@ -9,8 +9,10 @@ public sealed class DiskAssetIndex : IAssetIndex
 {
     private const int SchemaVersion = 4;
     private const string MetadataFileName = "metadata.json";
+    private const string CheckpointFileName = "checkpoint.json";
     private const string RowsFileName = "assets.jsonl";
     private const string OffsetsFileName = "assets.offsets";
+    private readonly string _sourcePath;
     private readonly string _indexRoot;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private volatile AssetIndexEntry[]? _cachedEntries;
@@ -22,8 +24,8 @@ public sealed class DiskAssetIndex : IAssetIndex
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexesRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
-        var canonicalSource = Path.GetFullPath(sourcePath);
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalSource)))[..24];
+        _sourcePath = Path.GetFullPath(sourcePath);
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_sourcePath)))[..24];
         _indexRoot = Path.Combine(Path.GetFullPath(indexesRoot), key);
     }
 
@@ -66,6 +68,20 @@ public sealed class DiskAssetIndex : IAssetIndex
                 offsetsWriter.Flush();
                 await rows.FlushAsync(cancellationToken);
                 await offsets.FlushAsync(cancellationToken);
+
+                var checkpoint = new IndexCheckpoint(
+                    SchemaVersion,
+                    _sourcePath,
+                    rows.Position,
+                    offsets.Position,
+                    count,
+                    new Dictionary<string, IndexedFileInfo>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    DateTimeOffset.UtcNow);
+                await using (var cpStream = File.Create(Path.Combine(staging, CheckpointFileName)))
+                {
+                    await JsonSerializer.SerializeAsync(cpStream, checkpoint, _jsonOptions, cancellationToken);
+                }
             }
 
             var metadata = new IndexMetadata(SchemaVersion, fingerprint, count, DateTimeOffset.UtcNow);
@@ -104,6 +120,104 @@ public sealed class DiskAssetIndex : IAssetIndex
         catch (JsonException)
         {
             return false;
+        }
+    }
+
+    public async Task<IndexResumeState> CheckResumeStateAsync(
+        IReadOnlyList<string> sourceFiles,
+        CancellationToken cancellationToken = default)
+    {
+        var checkpointPath = Path.Combine(_indexRoot, CheckpointFileName);
+        var rowsPath = Path.Combine(_indexRoot, RowsFileName);
+        var offsetsPath = Path.Combine(_indexRoot, OffsetsFileName);
+
+        if (!File.Exists(checkpointPath) || !File.Exists(rowsPath) || !File.Exists(offsetsPath))
+        {
+            return new IndexResumeState(false, null, sourceFiles.ToList(), 0);
+        }
+
+        IndexCheckpoint? checkpoint;
+        try
+        {
+            await using var stream = File.OpenRead(checkpointPath);
+            checkpoint = await JsonSerializer.DeserializeAsync<IndexCheckpoint>(stream, _jsonOptions, cancellationToken);
+        }
+        catch
+        {
+            return new IndexResumeState(false, null, sourceFiles.ToList(), 0);
+        }
+
+        if (checkpoint is null || checkpoint.SchemaVersion != SchemaVersion)
+        {
+            return new IndexResumeState(false, null, sourceFiles.ToList(), 0);
+        }
+
+        var rowsInfo = new FileInfo(rowsPath);
+        var offsetsInfo = new FileInfo(offsetsPath);
+        if (rowsInfo.Length < checkpoint.RowsFileLength || offsetsInfo.Length < checkpoint.OffsetsFileLength)
+        {
+            return new IndexResumeState(false, null, sourceFiles.ToList(), 0);
+        }
+
+        // Verify that all previously indexed files still exist on disk with matching length and timestamp
+        foreach (var (path, fileInfo) in checkpoint.IndexedFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var fi = new FileInfo(path);
+            if (!fi.Exists || fi.Length != fileInfo.Length || fi.LastWriteTimeUtc.Ticks != fileInfo.LastWriteTimeUtcTicks)
+            {
+                return new IndexResumeState(false, null, sourceFiles.ToList(), 0);
+            }
+        }
+
+        var remainingFiles = sourceFiles
+            .Where(f => !checkpoint.IndexedFiles.ContainsKey(f))
+            .ToList();
+
+        return new IndexResumeState(true, checkpoint, remainingFiles, checkpoint.EntryCount);
+    }
+
+    public async Task<IndexAppender> CreateAppenderAsync(
+        IndexResumeState resumeState,
+        CancellationToken cancellationToken = default)
+    {
+        var parent = Path.GetDirectoryName(_indexRoot)!;
+        System.IO.Directory.CreateDirectory(parent);
+        System.IO.Directory.CreateDirectory(_indexRoot);
+
+        var rowsPath = Path.Combine(_indexRoot, RowsFileName);
+        var offsetsPath = Path.Combine(_indexRoot, OffsetsFileName);
+
+        if (resumeState.CanResume && resumeState.Checkpoint is { } cp)
+        {
+            var rowsStream = new FileStream(rowsPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 128 * 1024);
+            var offsetsStream = new FileStream(offsetsPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 64 * 1024);
+
+            // Truncate to the exact length of the last committed checkpoint to rollback any partial uncommitted batch
+            rowsStream.SetLength(cp.RowsFileLength);
+            rowsStream.Position = cp.RowsFileLength;
+
+            offsetsStream.SetLength(cp.OffsetsFileLength);
+            offsetsStream.Position = cp.OffsetsFileLength;
+
+            return new IndexAppender(this, rowsStream, offsetsStream, cp, cp.EntryCount, _jsonOptions);
+        }
+        else
+        {
+            var rowsStream = new FileStream(rowsPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 128 * 1024);
+            var offsetsStream = new FileStream(offsetsPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 64 * 1024);
+
+            var freshCp = new IndexCheckpoint(
+                SchemaVersion,
+                _sourcePath,
+                0,
+                0,
+                0,
+                new Dictionary<string, IndexedFileInfo>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                DateTimeOffset.UtcNow);
+
+            return new IndexAppender(this, rowsStream, offsetsStream, freshCp, 0, _jsonOptions);
         }
     }
 
@@ -486,4 +600,150 @@ public sealed class DiskAssetIndex : IAssetIndex
     {
         public int Compare(T? left, T? right) => comparer.Compare(right!, left!);
     }
+
+    public sealed class IndexAppender : IAsyncDisposable
+    {
+        private readonly DiskAssetIndex _index;
+        private readonly FileStream _rowsStream;
+        private readonly FileStream _offsetsStream;
+        private readonly BinaryWriter _offsetsWriter;
+        private readonly Utf8JsonWriter _jsonWriter;
+        private readonly JsonSerializerOptions _jsonOptions;
+        private IndexCheckpoint _checkpoint;
+        private long _entryCount;
+        private bool _disposed;
+
+        public IndexAppender(
+            DiskAssetIndex index,
+            FileStream rowsStream,
+            FileStream offsetsStream,
+            IndexCheckpoint checkpoint,
+            long entryCount,
+            JsonSerializerOptions jsonOptions)
+        {
+            _index = index;
+            _rowsStream = rowsStream;
+            _offsetsStream = offsetsStream;
+            _offsetsWriter = new BinaryWriter(_offsetsStream, Encoding.UTF8, leaveOpen: true);
+            _jsonWriter = new Utf8JsonWriter(_rowsStream);
+            _checkpoint = checkpoint;
+            _entryCount = entryCount;
+            _jsonOptions = jsonOptions;
+        }
+
+        public long CurrentEntryCount => _entryCount;
+        public Dictionary<string, string> Containers => _checkpoint.Containers;
+
+        public void AppendEntry(AssetIndexEntry entry)
+        {
+            _offsetsWriter.Write(_rowsStream.Position);
+            JsonSerializer.Serialize(_jsonWriter, entry, _jsonOptions);
+            _jsonWriter.Flush();
+            _jsonWriter.Reset(_rowsStream);
+            _rowsStream.Write(s_newline);
+            _entryCount++;
+        }
+
+        public async Task CommitBatchAsync(
+            IReadOnlyList<string> batchFiles,
+            long batchAssetCount,
+            CancellationToken cancellationToken = default)
+        {
+            _offsetsWriter.Flush();
+            await _rowsStream.FlushAsync(cancellationToken);
+            await _offsetsStream.FlushAsync(cancellationToken);
+
+            foreach (var file in batchFiles)
+            {
+                var fi = new FileInfo(file);
+                if (fi.Exists)
+                {
+                    _checkpoint.IndexedFiles[file] = new IndexedFileInfo(fi.Length, fi.LastWriteTimeUtc.Ticks, batchAssetCount);
+                }
+            }
+
+            _checkpoint = _checkpoint with
+            {
+                RowsFileLength = _rowsStream.Position,
+                OffsetsFileLength = _offsetsStream.Position,
+                EntryCount = _entryCount,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+
+            var checkpointPath = Path.Combine(_index.DirectoryPath, CheckpointFileName);
+            var tmpPath = checkpointPath + ".tmp";
+            await using (var cpStream = File.Create(tmpPath))
+            {
+                await JsonSerializer.SerializeAsync(cpStream, _checkpoint, _jsonOptions, cancellationToken);
+            }
+            File.Move(tmpPath, checkpointPath, overwrite: true);
+        }
+
+        public async Task FinalizeAsync(
+            AssetSourceFingerprint fingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            _offsetsWriter.Flush();
+            await _rowsStream.FlushAsync(cancellationToken);
+            await _offsetsStream.FlushAsync(cancellationToken);
+
+            _checkpoint = _checkpoint with
+            {
+                RowsFileLength = _rowsStream.Position,
+                OffsetsFileLength = _offsetsStream.Position,
+                EntryCount = _entryCount,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            var checkpointPath = Path.Combine(_index.DirectoryPath, CheckpointFileName);
+            var tmpCheckpointPath = checkpointPath + ".tmp";
+            await using (var cpStream = File.Create(tmpCheckpointPath))
+            {
+                await JsonSerializer.SerializeAsync(cpStream, _checkpoint, _jsonOptions, cancellationToken);
+            }
+            File.Move(tmpCheckpointPath, checkpointPath, overwrite: true);
+
+            var metadata = new IndexMetadata(SchemaVersion, fingerprint, _entryCount, DateTimeOffset.UtcNow);
+            var metadataPath = Path.Combine(_index.DirectoryPath, MetadataFileName);
+            var tmpMetadataPath = metadataPath + ".tmp";
+            await using (var metadataStream = File.Create(tmpMetadataPath))
+            {
+                await JsonSerializer.SerializeAsync(metadataStream, metadata, _jsonOptions, cancellationToken);
+            }
+            File.Move(tmpMetadataPath, metadataPath, overwrite: true);
+
+            _index._cachedEntries = null;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            await _jsonWriter.DisposeAsync();
+            _offsetsWriter.Dispose();
+            await _rowsStream.DisposeAsync();
+            await _offsetsStream.DisposeAsync();
+        }
+    }
 }
+
+public sealed record IndexResumeState(
+    bool CanResume,
+    IndexCheckpoint? Checkpoint,
+    List<string> RemainingFiles,
+    long ExistingEntryCount);
+
+public sealed record IndexCheckpoint(
+    int SchemaVersion,
+    string SourceKey,
+    long RowsFileLength,
+    long OffsetsFileLength,
+    long EntryCount,
+    Dictionary<string, IndexedFileInfo> IndexedFiles,
+    Dictionary<string, string> Containers,
+    DateTimeOffset UpdatedAt);
+
+public sealed record IndexedFileInfo(
+    long Length,
+    long LastWriteTimeUtcTicks,
+    long AssetCount);
