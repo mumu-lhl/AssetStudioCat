@@ -25,6 +25,8 @@
       <MenuItem Header="_Export" IsEnabled="{Binding HasSelectedAsset}">
         <MenuItem Header="Export raw…" IsEnabled="{Binding CanExport}" Click="ExportRaw" />
         <MenuItem Header="Export complete dump…" IsEnabled="{Binding CanExport}" Click="ExportDump" />
+        <Separator />
+        <MenuItem Header="Export Animator as FBX…" IsEnabled="{Binding CanExportAnimator}" Click="ExportAnimator" />
       </MenuItem>
       <MenuItem Header="_Settings" Click="OpenSettings" />
     </Menu>

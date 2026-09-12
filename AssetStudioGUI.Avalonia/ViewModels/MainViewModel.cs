@@ -19,6 +19,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private TexturePreviewService? _previewService;
     private AssetInspectionService? _inspectionService;
     private AssetExportService? _exportService;
+    private AnimatorExportService? _animatorExportService;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private string? _sourcePath;
@@ -86,6 +87,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedAsset))]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
     public partial AssetRowViewModel? SelectedAsset { get; set; }
 
     [ObservableProperty]
@@ -96,11 +99,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
     public partial bool IsExportBusy { get; set; }
 
     public bool HasSelectedAsset => SelectedAsset is not null;
 
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
+
+    public bool CanExportAnimator => CanExport && SelectedAsset?.Type == "Animator";
 
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
@@ -127,6 +133,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 new MemoryPreviewCache(settings.PreviewCacheMegabytes));
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
+            _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout));
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -264,6 +271,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public Task ExportSelectedDumpAsync(string outputPath) =>
         ExportSelectedAsync(outputPath, dump: true);
+
+    public async Task ExportSelectedAnimatorAsync(string outputDirectory)
+    {
+        if (SelectedAsset is null || _animatorExportService is null || !CanExportAnimator)
+        {
+            return;
+        }
+
+        IsExportBusy = true;
+        StatusText = "Loading the selected AssetBundle and exporting Animator FBX…";
+        try
+        {
+            var result = await _animatorExportService.ExportAsync(SelectedAsset.IndexEntry, outputDirectory);
+            StatusText = $"Animator exported ({result.Files.Count} files)";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Animator export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
 
     private async Task ExportSelectedAsync(string outputPath, bool dump)
     {

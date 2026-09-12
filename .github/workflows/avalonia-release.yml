@@ -59,6 +59,24 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Set up MSBuild
+        if: matrix.rid == 'win-x64'
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Autodesk FBX SDK
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            "https://damassets.autodesk.net/content/dam/autodesk/www/adn/fbx/2020-2-1/fbx202021_fbxsdk_vs2019_win.exe" `
+            -OutFile "$env:RUNNER_TEMP/fbxsdk.exe"
+          Start-Process -FilePath "$env:RUNNER_TEMP/fbxsdk.exe" -ArgumentList "/S" -Wait
+
+      - name: Build Windows FBX native library
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: msbuild AssetStudioFBXNative/AssetStudioFBXNative.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
       - name: Publish self-contained application
         shell: pwsh
         run: |
@@ -75,6 +93,11 @@ jobs:
       - name: Create release archive
         shell: pwsh
         run: |
+          if ("${{ matrix.rid }}" -eq "win-x64") {
+            Copy-Item `
+              "AssetStudioFBXNative/bin/x64/Release/AssetStudioFBXNative.dll" `
+              "artifacts/publish/${{ matrix.rid }}/AssetStudioFBXNative.dll"
+          }
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
           $baseName = "AssetStudioCat-${{ github.ref_name }}-${{ matrix.rid }}"
           if ("${{ matrix.archive }}" -eq "zip") {

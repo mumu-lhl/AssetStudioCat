@@ -144,6 +144,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ExportAnimator(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a directory for the Animator FBX",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedAnimatorAsync(path);
+        }
+    }
+
     private static string MakeSafeFileName(string value)
     {
         var invalid = Path.GetInvalidFileNameChars();

@@ -29,4 +29,12 @@
   <ItemGroup>
     <ProjectReference Include="..\AssetStudio.AppCore\AssetStudio.AppCore.csproj" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' Or '$(RuntimeIdentifier)' == 'osx-x64' Or '$(RuntimeIdentifier)' == 'osx-arm64'">
+    <Content Include="..\AssetStudioCLI\Libraries\$(RuntimeIdentifier)\*AssetStudioFBXNative*">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>
