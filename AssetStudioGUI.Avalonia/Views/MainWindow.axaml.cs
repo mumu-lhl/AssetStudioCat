@@ -96,6 +96,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void LoadDump(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            await viewModel.LoadSelectedDumpAsync();
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         (DataContext as IDisposable)?.Dispose();

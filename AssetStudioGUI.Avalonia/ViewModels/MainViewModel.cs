@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Indexing;
+using AssetStudio.AppCore.Inspection;
 using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Preview;
 using Avalonia.Media.Imaging;
@@ -15,7 +16,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly AppDirectories _directories;
     private DiskAssetIndex? _currentIndex;
     private TexturePreviewService? _previewService;
+    private AssetInspectionService? _inspectionService;
     private CancellationTokenSource? _previewCancellation;
+    private CancellationTokenSource? _dumpCancellation;
     private string? _sourcePath;
     private int _pageOffset;
 
@@ -79,6 +82,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string AssetInformation { get; set; } = "No asset selected.";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedAsset))]
+    public partial AssetRowViewModel? SelectedAsset { get; set; }
+
+    [ObservableProperty]
+    public partial string DumpText { get; set; } = "Select an asset, then choose Load dump.";
+
+    [ObservableProperty]
+    public partial bool IsDumpBusy { get; set; }
+
+    public bool HasSelectedAsset => SelectedAsset is not null;
+
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
         if (IsBusy)
@@ -102,6 +117,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _previewService = new TexturePreviewService(
                 new AssetObjectLoader(settings, layout),
                 new MemoryPreviewCache(settings.PreviewCacheMegabytes));
+            _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -138,6 +154,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public async Task SelectAssetAsync(AssetRowViewModel? row)
     {
+        SelectedAsset = row;
+        _dumpCancellation?.Cancel();
+        IsDumpBusy = false;
+        DumpText = row is null ? "Select an asset, then choose Load dump." : "Choose Load dump to inspect this object.";
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = new CancellationTokenSource();
@@ -194,6 +214,42 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public async Task LoadSelectedDumpAsync()
+    {
+        if (SelectedAsset is null || _inspectionService is null || IsDumpBusy)
+        {
+            return;
+        }
+
+        IsDumpBusy = true;
+        DumpText = "Loading object dump…";
+        _dumpCancellation?.Dispose();
+        _dumpCancellation = new CancellationTokenSource();
+        var cancellationToken = _dumpCancellation.Token;
+        try
+        {
+            var result = await _inspectionService.LoadDumpAsync(SelectedAsset.IndexEntry, cancellationToken: cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            DumpText = result.Text;
+            StatusText = result.IsTruncated ? "Dump preview truncated to protect memory" : "Object dump loaded";
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer selection superseded this dump.
+        }
+        catch (Exception exception)
+        {
+            DumpText = $"Dump failed: {exception.Message}";
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                IsDumpBusy = false;
+            }
+        }
+    }
+
     private async Task LoadPageAsync(int offset)
     {
         if (_currentIndex is null)
@@ -235,6 +291,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
+        _dumpCancellation?.Cancel();
+        _dumpCancellation?.Dispose();
         PreviewImage?.Dispose();
     }
 
