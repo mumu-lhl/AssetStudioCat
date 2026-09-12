@@ -25,7 +25,7 @@ public sealed class AssetPreviewService
     }
 
     public bool Supports(string typeName) => typeName is
-        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "AudioClip";
+        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "AudioClip" or "MonoScript";
 
     public async Task<AssetPreview> LoadAsync(
         AssetIndexEntry entry,
@@ -56,6 +56,7 @@ public sealed class AssetPreviewService
             TextAsset text => PreviewText(entry, DecodeText(text.m_Script)),
             Shader shader => PreviewText(entry, shader.Convert()),
             AudioClip audio => PreviewAudio(entry, audio),
+            MonoScript script => PreviewMonoScript(entry, script),
             _ => throw new NotSupportedException($"Preview for {entry.TypeName} is not implemented."),
         };
         if (preview.PngData is not null)
@@ -102,6 +103,24 @@ public sealed class AssetPreviewService
             previewText,
             DescribeBasic(entry, truncated ? "Text preview truncated" : "Text preview"));
     }
+
+    private static AssetPreview PreviewMonoScript(AssetIndexEntry entry, MonoScript script)
+    {
+        var qualifiedName = string.IsNullOrWhiteSpace(script.m_Namespace)
+            ? script.m_ClassName
+            : $"{script.m_Namespace}.{script.m_ClassName}";
+        var details = new StringBuilder()
+            .AppendLine($"Name: {entry.Name}")
+            .AppendLine($"Class: {DisplayValue(qualifiedName)}")
+            .AppendLine($"Namespace: {DisplayValue(script.m_Namespace)}")
+            .AppendLine($"Assembly: {DisplayValue(script.m_AssemblyName)}")
+            .AppendLine($"PathID: {entry.PathId}")
+            .AppendLine($"Stored size: {entry.ByteSize:N0} bytes")
+            .ToString();
+        return new AssetPreview(null, details, DescribeBasic(entry, "MonoScript metadata"));
+    }
+
+    private static string DisplayValue(string? value) => string.IsNullOrWhiteSpace(value) ? "(not available)" : value;
 
     private static AssetPreview PreviewAudio(AssetIndexEntry entry, AudioClip audio)
     {
