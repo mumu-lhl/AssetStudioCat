@@ -32,7 +32,7 @@ public sealed class AssetObjectLoader
             ? sourceInfo.Length * 3
             : long.MaxValue;
         var decompression = DecompressionSession.Create(_settings, _cacheLayout, estimatedExpandedBytes);
-        var manager = new AssetsManager { MetadataOnly = !materializeAnimatorGraph };
+        var manager = new AssetsManager { MetadataOnly = true };
         if (materializeAnimatorGraph)
         {
             manager.SetAssetFilter(
@@ -46,6 +46,11 @@ public sealed class AssetObjectLoader
         try
         {
             manager.LoadFilesAndFolders(entry.ObjectSourcePath);
+            if (materializeAnimatorGraph)
+            {
+                ResolveAndLoadAnimatorDependencies(manager, entry, cancellationToken);
+                manager.MaterializeLoadedAssets();
+            }
             cancellationToken.ThrowIfCancellationRequested();
             var serializedFile = manager.AssetsFileList.FirstOrDefault(file =>
                 PathsEqual(file.fullName, entry.SerializedFile));
@@ -76,6 +81,48 @@ public sealed class AssetObjectLoader
             manager.Clear();
             decompression.Dispose();
             throw;
+        }
+    }
+
+    private void ResolveAndLoadAnimatorDependencies(
+        AssetsManager manager,
+        AssetIndexEntry entry,
+        CancellationToken cancellationToken)
+    {
+        var index = new DiskAssetIndex(_cacheLayout.Indexes, entry.SourcePath);
+        var loadedSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            Path.GetFullPath(entry.ObjectSourcePath),
+        };
+        var inspectedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var externalNames = manager.AssetsFileList
+                .Where(file => inspectedFiles.Add(file.fullName))
+                .SelectMany(file => file.m_Externals)
+                .Select(external => external.fileName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (externalNames.Length == 0)
+            {
+                return;
+            }
+
+            var resolvedSources = index.ResolveObjectSourcesAsync(externalNames, cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+            var newSources = resolvedSources
+                .Select(Path.GetFullPath)
+                .Where(loadedSources.Add)
+                .ToArray();
+            if (newSources.Length == 0)
+            {
+                return;
+            }
+            manager.LoadFilesAndFolders(newSources);
         }
     }
 

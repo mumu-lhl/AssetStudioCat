@@ -99,6 +99,32 @@ public sealed class DiskAssetIndex : IAssetIndex
             : await ReadFilteredPageAsync(query, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> ResolveObjectSourcesAsync(
+        IEnumerable<string> serializedFileNames,
+        CancellationToken cancellationToken = default)
+    {
+        var names = serializedFileNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(Path.GetFileName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (names.Count == 0)
+        {
+            return [];
+        }
+
+        var sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
+            if (names.Contains(Path.GetFileName(entry.SerializedFile)))
+            {
+                sources.Add(entry.ObjectSourcePath);
+            }
+        }
+        return sources.ToArray();
+    }
+
     public void Rebuild()
     {
         if (System.IO.Directory.Exists(_indexRoot))

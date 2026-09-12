@@ -61,6 +61,19 @@ public sealed class DiskAssetIndexTests : IDisposable
         Assert.False(Directory.Exists(index.DirectoryPath));
     }
 
+    [Fact]
+    public async Task ResolvesOnlyBundlesContainingRequestedSerializedFiles()
+    {
+        var source = CreateSourceDirectory();
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+        await index.BuildAsync(AssetSourceFingerprint.Create(source), DependencyEntries());
+
+        var sources = await index.ResolveObjectSourcesAsync(["shared.assets"]);
+
+        var sourcePath = Assert.Single(sources);
+        Assert.Equal("/source/bundle-shared", sourcePath);
+    }
+
     private string CreateSourceDirectory()
     {
         var source = Path.Combine(_root, "source");
@@ -90,6 +103,20 @@ public sealed class DiskAssetIndexTests : IDisposable
                 128);
             await Task.Yield();
         }
+    }
+
+    private static async IAsyncEnumerable<AssetIndexEntry> DependencyEntries()
+    {
+        yield return new AssetIndexEntry(
+            1, "/source", "/source/bundle-main", "/virtual/main.assets", 1,
+            95, "Animator", "character", null, 0, 128);
+        await Task.Yield();
+        yield return new AssetIndexEntry(
+            2, "/source", "/source/bundle-shared", "/virtual/shared.assets", 2,
+            43, "Mesh", "body", null, 128, 256);
+        yield return new AssetIndexEntry(
+            3, "/source", "/source/bundle-other", "/virtual/other.assets", 3,
+            28, "Texture2D", "unrelated", null, 384, 64);
     }
 
     public void Dispose()

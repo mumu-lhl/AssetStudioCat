@@ -223,6 +223,16 @@ namespace AssetStudio
             };
         }
 
+        public void MaterializeLoadedAssets()
+        {
+            if (!MetadataOnly)
+                return;
+
+            MetadataOnly = false;
+            ReadAssets();
+            ProcessAssets();
+        }
+
         private bool LoadFile(string fullName)
         {
             var reader = new FileReader(fullName);
