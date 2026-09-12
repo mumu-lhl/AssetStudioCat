@@ -19,6 +19,7 @@
       <MenuItem Header="_File">
         <MenuItem Header="Open files…" Click="OpenFiles" />
         <MenuItem Header="Open folder…" Click="OpenFolder" />
+        <MenuItem Header="Open most recent" IsEnabled="{Binding CanOpenRecent}" Click="OpenMostRecent" />
         <Separator />
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
@@ -43,6 +44,7 @@
         </MenuItem>
       </MenuItem>
       <MenuItem Header="_Settings" Click="OpenSettings" />
+      <MenuItem Header="_Cache manager" Click="OpenCacheManager" />
     </Menu>
 
     <Border Grid.Row="1" Padding="10,8" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
@@ -165,7 +167,10 @@
       <Grid ColumnDefinitions="*,Auto,Auto,220">
         <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="{Binding StatusText}" />
         <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="{Binding DecompressionSummary}" />
-        <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2" Content="Cancel export" IsVisible="{Binding IsBatchExportBusy}" Click="CancelExport" />
+        <StackPanel Grid.Column="2" Margin="0,0,8,0" Orientation="Horizontal" Spacing="6">
+          <Button Padding="10,2" Content="Cancel load" IsVisible="{Binding IsBusy}" Click="CancelLoad" />
+          <Button Padding="10,2" Content="Cancel export" IsVisible="{Binding IsBatchExportBusy}" Click="CancelExport" />
+        </StackPanel>
         <ProgressBar Grid.Column="3" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
       </Grid>
     </Border>

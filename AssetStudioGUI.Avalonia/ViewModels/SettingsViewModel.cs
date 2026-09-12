@@ -26,6 +26,7 @@ public partial class SettingsViewModel : ViewModelBase
         FbxEulerFilter = settings.FbxEulerFilter;
         FbxAscii = settings.FbxAscii;
         FbxScaleFactor = settings.FbxScaleFactor;
+        RestoreLastSource = settings.RestoreLastSource;
     }
 
     public IReadOnlyList<BundleDecompressionMode> Modes { get; } = Enum.GetValues<BundleDecompressionMode>();
@@ -75,6 +76,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial double FbxScaleFactor { get; set; }
 
+    [ObservableProperty]
+    public partial bool RestoreLastSource { get; set; }
+
     public bool IsDiskDirectoryEnabled => SelectedMode != BundleDecompressionMode.Memory;
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -93,6 +97,7 @@ public partial class SettingsViewModel : ViewModelBase
         _settings.FbxEulerFilter = FbxEulerFilter;
         _settings.FbxAscii = FbxAscii;
         _settings.FbxScaleFactor = FbxScaleFactor;
+        _settings.RestoreLastSource = RestoreLastSource;
         await _store.SaveAsync(_settings, cancellationToken);
     }
 }

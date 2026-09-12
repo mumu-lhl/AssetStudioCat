@@ -15,6 +15,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private const int PageSize = 250;
     private readonly AppDirectories _directories;
+    private readonly AppSettingsStore? _settingsStore;
     private DiskAssetIndex? _currentIndex;
     private AssetPreviewService? _previewService;
     private AssetInspectionService? _inspectionService;
@@ -25,20 +26,24 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private CancellationTokenSource? _exportCancellation;
+    private CancellationTokenSource? _loadCancellation;
+    private CancellationTokenSource? _pageCancellation;
     private readonly List<AssetRowViewModel> _selectedAssets = [];
     private IReadOnlyList<string> _sourcePaths = [];
     private bool _openedAsFileSelection;
     private int _pageOffset;
+    private int _pageGeneration;
 
     public MainViewModel()
-        : this(CreateDefaultSettings(), AppDirectories.Detect())
+        : this(CreateDefaultSettings(), AppDirectories.Detect(), null)
     {
     }
 
-    public MainViewModel(AppSettings settings, AppDirectories directories)
+    public MainViewModel(AppSettings settings, AppDirectories directories, AppSettingsStore? settingsStore = null)
     {
         Settings = settings;
         _directories = directories;
+        _settingsStore = settingsStore;
     }
 
     public string Title => "AssetStudioCat";
@@ -56,6 +61,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public AppSettings Settings { get; }
 
     public bool HasSource => _sourcePaths.Count > 0;
+
+    public bool CanOpenRecent => Settings.RecentSources.Count > 0;
 
     public bool CanGoPrevious => !IsBusy && _pageOffset > 0;
 
@@ -170,6 +177,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsBusy = true;
+        _loadCancellation?.Dispose();
+        _loadCancellation = new CancellationTokenSource();
+        var cancellationToken = _loadCancellation.Token;
         NotifyNavigationChanged();
         ProgressValue = 0;
         StatusText = forceRebuild ? "Rebuilding asset index…" : "Checking asset index…";
@@ -180,8 +190,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var builder = new AssetIndexBuilder(settings, layout);
             var progress = new Progress<int>(value => ProgressValue = value);
             var result = fileSelection
-                ? await builder.OpenFilesAsync(sourcePaths, forceRebuild, progress)
-                : await builder.OpenAsync(sourcePaths[0], forceRebuild, progress);
+                ? await builder.OpenFilesAsync(sourcePaths, forceRebuild, progress, cancellationToken)
+                : await builder.OpenAsync(sourcePaths[0], forceRebuild, progress, cancellationToken);
             _sourcePaths = sourcePaths.Select(Path.GetFullPath).ToArray();
             _openedAsFileSelection = fileSelection;
             _currentIndex = result.Index;
@@ -194,7 +204,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout), settings);
             _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings);
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
-            var typeCounts = await _currentIndex.GetTypeCountsAsync();
+            var typeCounts = await _currentIndex.GetTypeCountsAsync(cancellationToken);
             AssetTypes.Clear();
             AssetClasses.Clear();
             AssetTypes.Add("All types");
@@ -206,10 +216,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             SceneRoots.Clear();
             SelectedType = "All types";
             _pageOffset = 0;
-            await LoadPageAsync(0);
+            await LoadPageAsync(0, cancellationToken);
+            await RememberSourceAsync(_sourcePaths, fileSelection, cancellationToken);
             StatusText = result.ReusedExistingIndex
                 ? $"Opened cached index: {result.AssetCount:N0} assets"
                 : $"Built streaming index: {result.AssetCount:N0} assets; {result.Decompression.Mode} decompression";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Loading cancelled";
         }
         catch (Exception exception)
         {
@@ -226,6 +241,33 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public Task RebuildAsync() => _sourcePaths.Count == 0
         ? Task.CompletedTask
         : OpenSourcesAsync(_sourcePaths, _openedAsFileSelection, true);
+
+    public void CancelLoad() => _loadCancellation?.Cancel();
+
+    public async Task OpenMostRecentAsync()
+    {
+        var recent = Settings.RecentSources.FirstOrDefault();
+        if (recent is not null)
+        {
+            await OpenSourcesAsync(recent.Paths, recent.IsFileSelection, false);
+        }
+    }
+
+    public async Task RestoreLastSourceAsync()
+    {
+        if (!Settings.RestoreLastSource || Settings.RecentSources.FirstOrDefault() is not { } recent)
+        {
+            return;
+        }
+        if (recent.Paths.All(path => recent.IsFileSelection ? File.Exists(path) : Directory.Exists(path)))
+        {
+            await OpenSourcesAsync(recent.Paths, recent.IsFileSelection, false);
+        }
+        else
+        {
+            StatusText = "The most recent source is no longer available";
+        }
+    }
 
     public Task ApplyFilterAsync()
     {
@@ -523,20 +565,37 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task LoadPageAsync(int offset)
+    private async Task LoadPageAsync(int offset, CancellationToken cancellationToken = default)
     {
         if (_currentIndex is null)
         {
             return;
         }
 
-        var page = await _currentIndex.QueryAsync(new AssetIndexQuery(
-            offset,
-            PageSize,
-            string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-            SelectedType == "All types" ? null : SelectedType,
-            SelectedSortField,
-            SortDescending));
+        _pageCancellation?.Cancel();
+        _pageCancellation?.Dispose();
+        _pageCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _pageCancellation.Token;
+        var generation = ++_pageGeneration;
+        AssetIndexPage page;
+        try
+        {
+            page = await _currentIndex.QueryAsync(new AssetIndexQuery(
+                offset,
+                PageSize,
+                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                SelectedType == "All types" ? null : SelectedType,
+                SelectedSortField,
+                SortDescending), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return;
+        }
+        if (generation != _pageGeneration)
+        {
+            return;
+        }
         Assets.Clear();
         foreach (var entry in page.Items)
         {
@@ -559,6 +618,28 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(DecompressionSummary));
     }
 
+    private async Task RememberSourceAsync(
+        IReadOnlyList<string> paths,
+        bool fileSelection,
+        CancellationToken cancellationToken)
+    {
+        if (_settingsStore is null)
+        {
+            return;
+        }
+        var normalized = paths.Select(Path.GetFullPath).ToArray();
+        Settings.RecentSources.RemoveAll(item =>
+            item.IsFileSelection == fileSelection
+            && item.Paths.SequenceEqual(normalized, StringComparer.OrdinalIgnoreCase));
+        Settings.RecentSources.Insert(0, new RecentSource(normalized, fileSelection, DateTimeOffset.UtcNow));
+        if (Settings.RecentSources.Count > 10)
+        {
+            Settings.RecentSources.RemoveRange(10, Settings.RecentSources.Count - 10);
+        }
+        await _settingsStore.SaveAsync(Settings, cancellationToken);
+        OnPropertyChanged(nameof(CanOpenRecent));
+    }
+
     private void NotifyNavigationChanged()
     {
         OnPropertyChanged(nameof(HasSource));
@@ -574,6 +655,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _dumpCancellation?.Dispose();
         _exportCancellation?.Cancel();
         _exportCancellation?.Dispose();
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _pageCancellation?.Cancel();
+        _pageCancellation?.Dispose();
         PreviewImage?.Dispose();
     }
 

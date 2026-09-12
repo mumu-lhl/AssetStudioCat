@@ -2,7 +2,7 @@ namespace AssetStudio.AppCore.Configuration;
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -38,6 +38,10 @@ public sealed class AppSettings
 
     public double FbxScaleFactor { get; set; } = 1.0;
 
+    public bool RestoreLastSource { get; set; } = true;
+
+    public List<RecentSource> RecentSources { get; set; } = [];
+
     public AppSettings Normalize(AppDirectories directories)
     {
         SchemaVersion = CurrentSchemaVersion;
@@ -48,6 +52,12 @@ public sealed class AppSettings
             128L * 1024 * 1024,
             int.MaxValue);
         FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
+        RecentSources ??= [];
+        RecentSources = RecentSources
+            .Where(source => source.Paths is { Count: > 0 })
+            .OrderByDescending(source => source.LastOpenedAt)
+            .Take(10)
+            .ToList();
         CacheRoot = NormalizePath(CacheRoot, directories.DefaultCacheDirectory);
         DecompressionDirectory = NormalizePath(
             DecompressionDirectory,

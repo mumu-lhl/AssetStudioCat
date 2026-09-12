@@ -21,6 +21,34 @@ public partial class MainWindow : Window
         : this()
     {
         _settingsStore = settingsStore;
+        Opened += async (_, _) =>
+        {
+            if (DataContext is MainViewModel viewModel) await viewModel.RestoreLastSourceAsync();
+        };
+    }
+
+    private async void OpenCacheManager(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+        var layout = new AssetStudio.AppCore.Caching.CacheLayout(viewModel.Settings.Normalize(AppDirectories.Detect()));
+        var window = new CacheManagerWindow
+        {
+            DataContext = new CacheManagerViewModel(new AssetStudio.AppCore.Caching.CacheCatalog(layout)),
+        };
+        await window.ShowDialog(this);
+    }
+
+    private async void OpenMostRecent(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) await viewModel.OpenMostRecentAsync();
+    }
+
+    private void CancelLoad(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) viewModel.CancelLoad();
     }
 
     private async void OpenSettings(object? sender, RoutedEventArgs e)

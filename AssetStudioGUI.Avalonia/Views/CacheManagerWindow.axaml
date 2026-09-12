@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AssetStudioGUI.Avalonia.ViewModels"
+        x:Class="AssetStudioGUI.Avalonia.Views.CacheManagerWindow"
+        x:DataType="vm:CacheManagerViewModel"
+        Title="Index cache manager" Width="850" Height="460" MinWidth="650" MinHeight="320"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto">
+    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Persistent disk indexes" />
+    <TextBlock Grid.Row="1" Margin="0,4,0,12" Foreground="{DynamicResource ThemeForegroundLowBrush}"
+               Text="Each folder or selected file set has its own index. Deleting one does not touch source assets." />
+    <Grid Grid.Row="2" RowDefinitions="Auto,*">
+      <Grid Margin="8,4" ColumnDefinitions="*,100,100,150">
+        <TextBlock FontWeight="SemiBold" Text="Source" />
+        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Assets" />
+        <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Cache" />
+        <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Created" />
+      </Grid>
+      <ListBox Grid.Row="1" x:Name="CacheList" ItemsSource="{Binding Entries}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:CacheIndexRowViewModel">
+            <Grid Margin="5,4" ColumnDefinitions="*,100,100,150">
+              <TextBlock Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" Text="{Binding Assets}" />
+              <TextBlock Grid.Column="2" Text="{Binding Size}" />
+              <TextBlock Grid.Column="3" Text="{Binding Created}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+    <Grid Grid.Row="3" Margin="0,12,0,0" ColumnDefinitions="*,Auto,Auto,Auto">
+      <TextBlock VerticalAlignment="Center" Text="{Binding Summary}" />
+      <Button Grid.Column="1" Margin="0,0,8,0" Content="Refresh" Click="Refresh" />
+      <Button Grid.Column="2" Margin="0,0,8,0" Content="Delete selected" Click="DeleteSelected" />
+      <Button Grid.Column="3" Content="Clear all indexes" Click="ClearAll" />
+    </Grid>
+  </Grid>
+</Window>

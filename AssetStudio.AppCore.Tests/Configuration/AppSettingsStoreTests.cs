@@ -20,6 +20,8 @@ public sealed class AppSettingsStoreTests : IDisposable
             PreviewCacheMegabytes = 192,
             ConvertedImageFormat = ConvertedImageFormat.Webp,
             FbxScaleFactor = 0.01,
+            RestoreLastSource = false,
+            RecentSources = [new RecentSource(["/games/one"], false, DateTimeOffset.UtcNow)],
         };
 
         await store.SaveAsync(settings);
@@ -30,6 +32,8 @@ public sealed class AppSettingsStoreTests : IDisposable
         Assert.Equal(192, loaded.PreviewCacheMegabytes);
         Assert.Equal(ConvertedImageFormat.Webp, loaded.ConvertedImageFormat);
         Assert.Equal(0.01, loaded.FbxScaleFactor);
+        Assert.False(loaded.RestoreLastSource);
+        Assert.Single(loaded.RecentSources);
     }
 
     [Fact]

@@ -38,6 +38,7 @@
 
         <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Preview cache limit (MB)" />
         <NumericUpDown Minimum="32" Maximum="4096" Increment="32" Value="{Binding PreviewCacheMegabytes}" />
+        <CheckBox Content="Restore the most recent source at startup" IsChecked="{Binding RestoreLastSource}" />
 
         <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="Converted export" />
         <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Texture and Sprite image format" />
