@@ -166,16 +166,18 @@ namespace AssetStudio
             ProcessAssets();
         }
 
+        private static readonly JsonSerializerOptions s_materializeJsonOptions = new()
+        {
+            Converters = { new JsonConverterHelper.ByteArrayConverter(), new JsonConverterHelper.PPtrConverter(), new JsonConverterHelper.KVPConverter() },
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+            PropertyNameCaseInsensitive = true,
+            IncludeFields = true,
+        };
+
         public Object MaterializeObject(SerializedFile assetsFile, ObjectInfo objectInfo)
         {
             var objectReader = new ObjectReader(assetsFile.reader, assetsFile, objectInfo);
-            var jsonOptions = new JsonSerializerOptions
-            {
-                Converters = { new JsonConverterHelper.ByteArrayConverter(), new JsonConverterHelper.PPtrConverter(), new JsonConverterHelper.KVPConverter() },
-                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
-                PropertyNameCaseInsensitive = true,
-                IncludeFields = true,
-            };
+            var jsonOptions = s_materializeJsonOptions;
 
             return objectReader.type switch
             {
@@ -695,13 +697,7 @@ namespace AssetStudio
         {
             Logger.Info("Read assets...");
 
-            var jsonOptions = new JsonSerializerOptions
-            {
-                Converters = { new JsonConverterHelper.ByteArrayConverter(), new JsonConverterHelper.PPtrConverter(), new JsonConverterHelper.KVPConverter() },
-                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
-                PropertyNameCaseInsensitive = true,
-                IncludeFields = true,
-            };
+            var jsonOptions = s_materializeJsonOptions;
 
             var progressCount = AssetsFileList.Sum(x => x.m_Objects.Count);
             var i = 0;

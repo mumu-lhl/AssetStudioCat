@@ -112,14 +112,60 @@ public sealed class AssetIndexBuilder
             foreach (var location in file.m_Objects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                global::AssetStudio.Object? asset = null;
+                var classIdType = (ClassIDType)location.classID;
+                string? name = null;
+                long? gameObjectPathId = null;
+                string? gameObjectSerializedFile = null;
+                long? parentTransformPathId = null;
+                string? parentTransformSerializedFile = null;
+
                 try
                 {
-                    asset = manager.MaterializeObject(file, location);
+                    if (classIdType is ClassIDType.Transform or ClassIDType.RectTransform)
+                    {
+                        var reader = new ObjectReader(file.reader, file, location);
+                        var transform = new Transform(reader);
+                        gameObjectPathId = transform.m_GameObject.m_PathID;
+                        gameObjectSerializedFile = ResolveReferencedFile(file, transform.m_GameObject.m_FileID);
+                        if (!transform.m_Father.IsNull)
+                        {
+                            parentTransformPathId = transform.m_Father.m_PathID;
+                            parentTransformSerializedFile = ResolveReferencedFile(file, transform.m_Father.m_FileID);
+                        }
+                    }
+                    else if (classIdType == ClassIDType.GameObject)
+                    {
+                        var reader = new ObjectReader(file.reader, file, location);
+                        var go = new GameObject(reader);
+                        name = go.m_Name;
+                    }
+                    else if (classIdType == ClassIDType.MonoBehaviour)
+                    {
+                        var reader = new ObjectReader(file.reader, file, location);
+                        var mb = new MonoBehaviour(reader);
+                        name = mb.m_Name;
+                    }
+                    else if (classIdType == ClassIDType.AssetBundle)
+                    {
+                        var reader = new ObjectReader(file.reader, file, location);
+                        var ab = new AssetBundle(reader);
+                        name = string.IsNullOrEmpty(ab.m_AssetBundleName) ? ab.m_Name : ab.m_AssetBundleName;
+                    }
+                    else if (IsNamedObjectClass(classIdType))
+                    {
+                        var reader = new ObjectReader(file.reader, file, location);
+                        var named = new NamedObject(reader);
+                        name = named.m_Name;
+                    }
                 }
                 catch (Exception exception)
                 {
                     Logger.Warning($"Unable to index {file.fileName} PathID {location.m_PathID}: {exception.Message}");
+                }
+
+                if (string.IsNullOrEmpty(name))
+                {
+                    name = $"{classIdType} #{location.m_PathID}";
                 }
 
                 yield return new AssetIndexEntry(
@@ -129,29 +175,48 @@ public sealed class AssetIndexBuilder
                     file.fullName,
                     location.m_PathID,
                     location.classID,
-                    ((ClassIDType)location.classID).ToString(),
-                    asset is null ? $"{(ClassIDType)location.classID} #{location.m_PathID}" : ResolveName(asset),
+                    classIdType.ToString(),
+                    name,
                     containers.GetValueOrDefault(new ObjectReference(file.fullName, location.m_PathID)),
                     location.byteStart,
                     location.byteSize,
-                    asset is Transform transform ? transform.m_GameObject.m_PathID : null,
-                    asset is Transform gameObjectTransform
-                        ? ResolveReferencedFile(file, gameObjectTransform.m_GameObject.m_FileID)
-                        : null,
-                    asset is Transform parentTransform && !parentTransform.m_Father.IsNull
-                        ? parentTransform.m_Father.m_PathID
-                        : null,
-                    asset is Transform parentFileTransform && !parentFileTransform.m_Father.IsNull
-                        ? ResolveReferencedFile(file, parentFileTransform.m_Father.m_FileID)
-                        : null);
+                    gameObjectPathId,
+                    gameObjectSerializedFile,
+                    parentTransformPathId,
+                    parentTransformSerializedFile);
 
-                if ((id & 255) == 0)
+                if ((id & 511) == 0)
                 {
                     await Task.Yield();
                 }
             }
         }
     }
+
+    private static bool IsNamedObjectClass(ClassIDType type) => type switch
+    {
+        ClassIDType.Texture2D or
+        ClassIDType.Texture2DArray or
+        ClassIDType.MovieTexture or
+        ClassIDType.Mesh or
+        ClassIDType.Shader or
+        ClassIDType.Material or
+        ClassIDType.AnimationClip or
+        ClassIDType.AudioClip or
+        ClassIDType.VideoClip or
+        ClassIDType.TextAsset or
+        ClassIDType.Sprite or
+        ClassIDType.SpriteAtlas or
+        ClassIDType.Avatar or
+        ClassIDType.Font or
+        ClassIDType.MonoScript or
+        ClassIDType.PreloadData or
+        ClassIDType.AnimatorController or
+        ClassIDType.AnimatorOverrideController or
+        ClassIDType.ComputeShader or
+        ClassIDType.ShaderVariantCollection => true,
+        _ => false
+    };
 
     private static Dictionary<ObjectReference, string> BuildContainerMap(AssetsManager manager)
     {
@@ -240,19 +305,6 @@ public sealed class AssetIndexBuilder
             : null;
     }
 
-    private static string ResolveName(global::AssetStudio.Object asset)
-    {
-        var name = asset switch
-        {
-            GameObject value => value.m_Name,
-            MonoBehaviour value => value.m_Name,
-            Shader value => value.m_ParsedForm?.m_Name ?? value.m_Name,
-            AssetBundle value => string.IsNullOrEmpty(value.m_AssetBundleName) ? value.m_Name : value.m_AssetBundleName,
-            NamedObject value => value.m_Name,
-            _ => asset.Name,
-        };
-        return string.IsNullOrEmpty(name) ? $"{asset.type} #{asset.m_PathID}" : name;
-    }
 
     private static long SaturatingMultiply(long value, int multiplier) =>
         value > long.MaxValue / multiplier ? long.MaxValue : value * multiplier;

@@ -16,6 +16,8 @@ public sealed class DiskAssetIndex : IAssetIndex
     private volatile AssetIndexEntry[]? _cachedEntries;
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
+    private static readonly byte[] s_newline = "\n"u8.ToArray();
+
     public DiskAssetIndex(string indexesRoot, string sourcePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexesRoot);
@@ -43,18 +45,27 @@ public sealed class DiskAssetIndex : IAssetIndex
             var offsetsPath = Path.Combine(staging, OffsetsFileName);
             long count = 0;
             var cached = new List<AssetIndexEntry>();
-            await using (var rows = new FileStream(rowsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, true))
-            await using (var offsets = new FileStream(offsetsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 16 * 1024, true))
+
+            await using (var rows = new FileStream(rowsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024))
+            await using (var offsets = new FileStream(offsetsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024))
             {
+                using var offsetsWriter = new BinaryWriter(offsets, Encoding.UTF8, leaveOpen: true);
+                using var jsonWriter = new Utf8JsonWriter(rows);
+
                 await foreach (var entry in entries.WithCancellation(cancellationToken))
                 {
                     cached.Add(entry);
-                    var offsetBytes = BitConverter.GetBytes(rows.Position);
-                    await offsets.WriteAsync(offsetBytes, cancellationToken);
-                    await JsonSerializer.SerializeAsync(rows, entry, _jsonOptions, cancellationToken);
-                    await rows.WriteAsync("\n"u8.ToArray(), cancellationToken);
+                    offsetsWriter.Write(rows.Position);
+                    JsonSerializer.Serialize(jsonWriter, entry, _jsonOptions);
+                    jsonWriter.Flush();
+                    jsonWriter.Reset(rows);
+                    rows.Write(s_newline);
                     count++;
                 }
+
+                offsetsWriter.Flush();
+                await rows.FlushAsync(cancellationToken);
+                await offsets.FlushAsync(cancellationToken);
             }
 
             var metadata = new IndexMetadata(SchemaVersion, fingerprint, count, DateTimeOffset.UtcNow);
