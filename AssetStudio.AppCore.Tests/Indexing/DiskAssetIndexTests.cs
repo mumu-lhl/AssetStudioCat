@@ -113,6 +113,28 @@ public sealed class DiskAssetIndexTests : IDisposable
         Assert.NotEqual(one.Digest, changed.Digest);
     }
 
+    [Fact]
+    public async Task GloballySortsPagedResultsWithoutChangingIndexOrder()
+    {
+        var source = CreateSourceDirectory();
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+        await index.BuildAsync(AssetSourceFingerprint.Create(source), Entries(30));
+
+        var page = await index.QueryAsync(new AssetIndexQuery(
+            Offset: 5,
+            Limit: 5,
+            SortField: AssetSortField.Name,
+            SortDescending: true));
+
+        var expected = Enumerable.Range(0, 30)
+            .Select(value => $"asset-{value}")
+            .OrderByDescending(value => value, StringComparer.OrdinalIgnoreCase)
+            .Skip(5)
+            .Take(5);
+        Assert.Equal(expected, page.Items.Select(item => item.Name));
+        Assert.Equal(30, page.TotalCount);
+    }
+
     private string CreateSourceDirectory()
     {
         var source = Path.Combine(_root, "source");

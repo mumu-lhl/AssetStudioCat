@@ -4,7 +4,9 @@ public sealed record AssetIndexQuery(
     int Offset = 0,
     int Limit = 250,
     string? SearchText = null,
-    string? TypeName = null)
+    string? TypeName = null,
+    AssetSortField SortField = AssetSortField.IndexOrder,
+    bool SortDescending = false)
 {
     public AssetIndexQuery Normalize() => this with
     {

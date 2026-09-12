@@ -128,6 +128,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void SortChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel { IsBusy: false } viewModel)
+        {
+            await viewModel.ApplyFilterAsync();
+        }
+    }
+
+    private async void SortDirectionChanged(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel { IsBusy: false } viewModel)
+        {
+            await viewModel.ApplyFilterAsync();
+        }
+    }
+
     private async void LoadDump(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)

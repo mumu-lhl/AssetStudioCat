@@ -51,6 +51,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<SceneNodeViewModel> SceneRoots { get; } = [];
 
+    public IReadOnlyList<AssetSortField> SortFields { get; } = Enum.GetValues<AssetSortField>();
+
     public AppSettings Settings { get; }
 
     public bool HasSource => _sourcePaths.Count > 0;
@@ -70,6 +72,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial string SelectedType { get; set; } = "All types";
+
+    [ObservableProperty]
+    public partial AssetSortField SelectedSortField { get; set; } = AssetSortField.IndexOrder;
+
+    [ObservableProperty]
+    public partial bool SortDescending { get; set; }
 
     public string DecompressionSummary => Settings.DecompressionMode switch
     {
@@ -526,7 +534,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             offset,
             PageSize,
             string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-            SelectedType == "All types" ? null : SelectedType));
+            SelectedType == "All types" ? null : SelectedType,
+            SelectedSortField,
+            SortDescending));
         Assets.Clear();
         foreach (var entry in page.Items)
         {

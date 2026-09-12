@@ -95,9 +95,49 @@ public sealed class DiskAssetIndex : IAssetIndex
     {
         query = query.Normalize();
         var metadata = await ReadMetadataAsync(cancellationToken);
+        if (query.SortField != AssetSortField.IndexOrder)
+        {
+            return await ReadSortedPageAsync(query, cancellationToken);
+        }
         return query.SearchText is null && query.TypeName is null
             ? await ReadDirectPageAsync(query, metadata.EntryCount, cancellationToken)
             : await ReadFilteredPageAsync(query, cancellationToken);
+    }
+
+    private async Task<AssetIndexPage> ReadSortedPageAsync(
+        AssetIndexQuery query,
+        CancellationToken cancellationToken)
+    {
+        var desiredComparer = new AssetEntryComparer(query.SortField, query.SortDescending);
+        var queue = new PriorityQueue<AssetIndexEntry, AssetIndexEntry>(
+            new ReversedComparer<AssetIndexEntry>(desiredComparer));
+        var keep = query.Offset > int.MaxValue - query.Limit - 1
+            ? int.MaxValue
+            : query.Offset + query.Limit + 1;
+        long total = 0;
+        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
+            if (!Matches(entry, query))
+            {
+                continue;
+            }
+            total++;
+            queue.Enqueue(entry, entry);
+            if (queue.Count > keep)
+            {
+                queue.Dequeue();
+            }
+        }
+
+        var ordered = queue.UnorderedItems
+            .Select(item => item.Element)
+            .Order(desiredComparer)
+            .ToArray();
+        var items = ordered.Skip(query.Offset).Take(query.Limit).ToArray();
+        var next = query.Offset + items.Length < total ? query.Offset + items.Length : (int?)null;
+        return new AssetIndexPage(items, query.Offset, next, total);
     }
 
     public async Task<IReadOnlyList<string>> ResolveObjectSourcesAsync(
@@ -267,4 +307,34 @@ public sealed class DiskAssetIndex : IAssetIndex
         AssetSourceFingerprint Fingerprint,
         long EntryCount,
         DateTimeOffset CreatedAt);
+
+    private sealed class AssetEntryComparer(AssetSortField field, bool descending) : IComparer<AssetIndexEntry>
+    {
+        public int Compare(AssetIndexEntry? left, AssetIndexEntry? right)
+        {
+            if (ReferenceEquals(left, right)) return 0;
+            if (left is null) return -1;
+            if (right is null) return 1;
+            var value = field switch
+            {
+                AssetSortField.Name => StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name),
+                AssetSortField.Type => StringComparer.OrdinalIgnoreCase.Compare(left.TypeName, right.TypeName),
+                AssetSortField.Size => left.ByteSize.CompareTo(right.ByteSize),
+                AssetSortField.PathId => left.PathId.CompareTo(right.PathId),
+                _ => left.Id.CompareTo(right.Id),
+            };
+            if (value == 0)
+            {
+                value = left.Id.CompareTo(right.Id);
+            }
+            return descending
+                ? value > 0 ? -1 : value < 0 ? 1 : 0
+                : value;
+        }
+    }
+
+    private sealed class ReversedComparer<T>(IComparer<T> comparer) : IComparer<T>
+    {
+        public int Compare(T? left, T? right) => comparer.Compare(right!, left!);
+    }
 }
