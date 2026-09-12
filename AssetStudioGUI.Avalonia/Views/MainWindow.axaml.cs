@@ -116,6 +116,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void LoadHierarchy(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            await viewModel.LoadHierarchyAsync();
+        }
+    }
+
+    private async void AssetClassSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && sender is ListBox listBox)
+        {
+            await viewModel.SelectAssetClassAsync(listBox.SelectedItem as AssetClassRowViewModel);
+        }
+    }
+
     private async void ExportRaw(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel { SelectedAsset: { } selected } viewModel)

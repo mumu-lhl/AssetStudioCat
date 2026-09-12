@@ -46,6 +46,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<string> AssetTypes { get; } = ["All types"];
 
+    public ObservableCollection<AssetClassRowViewModel> AssetClasses { get; } = [];
+
+    public ObservableCollection<SceneNodeViewModel> SceneRoots { get; } = [];
+
     public AppSettings Settings { get; }
 
     public bool HasSource => _sourcePath is not null;
@@ -114,6 +118,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsBatchExportBusy { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsHierarchyBusy { get; set; }
+
     public bool HasSelectedAsset => SelectedAsset is not null;
 
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
@@ -154,11 +161,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
             var typeCounts = await _currentIndex.GetTypeCountsAsync();
             AssetTypes.Clear();
+            AssetClasses.Clear();
             AssetTypes.Add("All types");
             foreach (var typeName in typeCounts.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
             {
                 AssetTypes.Add(typeName);
+                AssetClasses.Add(new AssetClassRowViewModel(typeName, typeCounts[typeName]));
             }
+            SceneRoots.Clear();
             SelectedType = "All types";
             _pageOffset = 0;
             await LoadPageAsync(0);
@@ -262,6 +272,45 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _selectedAssets.AddRange(rows);
         OnPropertyChanged(nameof(HasBatchSelection));
         OnPropertyChanged(nameof(SelectedAssetCount));
+    }
+
+    public async Task LoadHierarchyAsync()
+    {
+        if (_currentIndex is null || IsHierarchyBusy)
+        {
+            return;
+        }
+
+        IsHierarchyBusy = true;
+        StatusText = "Building scene hierarchy from the disk index…";
+        try
+        {
+            var roots = await new SceneHierarchyService().BuildAsync(_currentIndex);
+            SceneRoots.Clear();
+            foreach (var root in roots)
+            {
+                SceneRoots.Add(SceneNodeViewModel.FromNode(root));
+            }
+            StatusText = $"Scene hierarchy loaded: {roots.Count:N0} roots";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Hierarchy failed: {exception.Message}";
+        }
+        finally
+        {
+            IsHierarchyBusy = false;
+        }
+    }
+
+    public async Task SelectAssetClassAsync(AssetClassRowViewModel? assetClass)
+    {
+        if (assetClass is null)
+        {
+            return;
+        }
+        SelectedType = assetClass.TypeName;
+        await ApplyFilterAsync();
     }
 
     public async Task LoadSelectedDumpAsync()
@@ -500,3 +549,16 @@ public sealed record AssetRowViewModel(
     long PathId,
     long Size,
     AssetIndexEntry IndexEntry);
+
+public sealed record AssetClassRowViewModel(string TypeName, long Count);
+
+public sealed record SceneNodeViewModel(
+    string Name,
+    string Details,
+    IReadOnlyList<SceneNodeViewModel> Children)
+{
+    public static SceneNodeViewModel FromNode(SceneHierarchyNode node) => new(
+        node.Name,
+        $"PathID {node.GameObjectPathId}",
+        node.Children.Select(FromNode).ToArray());
+}

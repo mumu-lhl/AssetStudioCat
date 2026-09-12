@@ -80,6 +80,7 @@ public sealed class AssetIndexBuilder
         string sourceRoot,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        var containers = BuildContainerMap(manager);
         long id = 0;
         foreach (var file in manager.AssetsFileList)
         {
@@ -105,9 +106,19 @@ public sealed class AssetIndexBuilder
                     location.classID,
                     ((ClassIDType)location.classID).ToString(),
                     asset is null ? $"{(ClassIDType)location.classID} #{location.m_PathID}" : ResolveName(asset),
-                    null,
+                    containers.GetValueOrDefault(new ObjectReference(file.fullName, location.m_PathID)),
                     location.byteStart,
-                    location.byteSize);
+                    location.byteSize,
+                    asset is Transform transform ? transform.m_GameObject.m_PathID : null,
+                    asset is Transform gameObjectTransform
+                        ? ResolveReferencedFile(file, gameObjectTransform.m_GameObject.m_FileID)
+                        : null,
+                    asset is Transform parentTransform && !parentTransform.m_Father.IsNull
+                        ? parentTransform.m_Father.m_PathID
+                        : null,
+                    asset is Transform parentFileTransform && !parentFileTransform.m_Father.IsNull
+                        ? ResolveReferencedFile(file, parentFileTransform.m_Father.m_FileID)
+                        : null);
 
                 if ((id & 255) == 0)
                 {
@@ -115,6 +126,93 @@ public sealed class AssetIndexBuilder
                 }
             }
         }
+    }
+
+    private static Dictionary<ObjectReference, string> BuildContainerMap(AssetsManager manager)
+    {
+        var containers = new Dictionary<ObjectReference, string>();
+        foreach (var file in manager.AssetsFileList)
+        {
+            foreach (var location in file.m_Objects.Where(info =>
+                         info.classID == (int)ClassIDType.AssetBundle
+                         || info.classID == (int)ClassIDType.ResourceManager))
+            {
+                global::AssetStudio.Object? asset;
+                try
+                {
+                    asset = manager.MaterializeObject(file, location);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (asset is AssetBundle bundle)
+                {
+                    foreach (var pair in bundle.m_Container)
+                    {
+                        AddContainer(containers, file, pair.Value.asset, pair.Key);
+                        var start = Math.Clamp(pair.Value.preloadIndex, 0, bundle.m_PreloadTable.Count);
+                        var count = bundle.m_IsStreamedSceneAssetBundle
+                            ? bundle.m_PreloadTable.Count - start
+                            : Math.Clamp(pair.Value.preloadSize, 0, bundle.m_PreloadTable.Count - start);
+                        for (var index = start; index < start + count; index++)
+                        {
+                            AddContainer(containers, file, bundle.m_PreloadTable[index], pair.Key);
+                        }
+                    }
+                }
+                else if (asset is ResourceManager resources)
+                {
+                    foreach (var pair in resources.m_Container)
+                    {
+                        AddContainer(containers, file, pair.Value, pair.Key);
+                    }
+                }
+            }
+        }
+        return containers;
+    }
+
+    private static void AddContainer(
+        IDictionary<ObjectReference, string> containers,
+        SerializedFile sourceFile,
+        PPtr<global::AssetStudio.Object> pointer,
+        string container)
+    {
+        if (pointer.IsNull)
+        {
+            return;
+        }
+        var targetFile = ResolveReferencedFile(sourceFile, pointer.m_FileID);
+        if (targetFile is not null)
+        {
+            containers.TryAdd(new ObjectReference(targetFile, pointer.m_PathID), container);
+        }
+    }
+
+    private readonly record struct ObjectReference
+    {
+        public ObjectReference(string serializedFile, long pathId)
+        {
+            SerializedFileName = Path.GetFileName(serializedFile).ToUpperInvariant();
+            PathId = pathId;
+        }
+
+        public string SerializedFileName { get; }
+        public long PathId { get; }
+    }
+
+    private static string? ResolveReferencedFile(SerializedFile file, int fileId)
+    {
+        if (fileId == 0)
+        {
+            return file.fullName;
+        }
+        var index = fileId - 1;
+        return index >= 0 && index < file.m_Externals.Count
+            ? file.m_Externals[index].fileName
+            : null;
     }
 
     private static string ResolveName(global::AssetStudio.Object asset)

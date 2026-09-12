@@ -7,7 +7,7 @@ namespace AssetStudio.AppCore.Indexing;
 
 public sealed class DiskAssetIndex : IAssetIndex
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private const string MetadataFileName = "metadata.json";
     private const string RowsFileName = "assets.jsonl";
     private const string OffsetsFileName = "assets.offsets";

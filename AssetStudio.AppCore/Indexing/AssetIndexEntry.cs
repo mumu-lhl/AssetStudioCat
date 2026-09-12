@@ -11,4 +11,8 @@ public sealed record AssetIndexEntry(
     string Name,
     string? Container,
     long ByteStart,
-    uint ByteSize);
+    uint ByteSize,
+    long? GameObjectPathId = null,
+    string? GameObjectSerializedFile = null,
+    long? ParentTransformPathId = null,
+    string? ParentTransformSerializedFile = null);
