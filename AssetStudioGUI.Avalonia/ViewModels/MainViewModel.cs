@@ -8,6 +8,7 @@ using AssetStudio.AppCore.Inspection;
 using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Preview;
 using AssetStudioGUI.Avalonia.Localization;
+using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -107,6 +108,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial bool SortDescending { get; set; }
+
+    [ObservableProperty]
+    public partial GridLength ColumnWidthName { get; set; } = new(240, GridUnitType.Pixel);
+
+    [ObservableProperty]
+    public partial GridLength ColumnWidthContainer { get; set; } = new(200, GridUnitType.Pixel);
+
+    [ObservableProperty]
+    public partial GridLength ColumnWidthType { get; set; } = new(110, GridUnitType.Pixel);
+
+    [ObservableProperty]
+    public partial GridLength ColumnWidthPathId { get; set; } = new(100, GridUnitType.Pixel);
+
+    [ObservableProperty]
+    public partial GridLength ColumnWidthSize { get; set; } = new(100, GridUnitType.Pixel);
 
     public string DecompressionSummary => Settings.DecompressionMode switch
     {

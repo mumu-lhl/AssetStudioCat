@@ -397,6 +397,97 @@ public partial class MainWindow : Window
         viewport?.ResetCamera();
     }
 
+    private bool _isResizingColumn;
+    private int _resizingColumnIndex;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
+
+    private void ColumnSplitter_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Border border && border.Tag is string tagStr && int.TryParse(tagStr, out var colIdx))
+        {
+            if (DataContext is not MainViewModel viewModel) return;
+
+            var point = e.GetCurrentPoint(this);
+            if (!point.Properties.IsLeftButtonPressed) return;
+
+            _isResizingColumn = true;
+            _resizingColumnIndex = colIdx;
+            _resizeStartX = point.Position.X;
+            _resizeStartWidth = colIdx switch
+            {
+                0 => viewModel.ColumnWidthName.Value,
+                1 => viewModel.ColumnWidthContainer.Value,
+                2 => viewModel.ColumnWidthType.Value,
+                3 => viewModel.ColumnWidthPathId.Value,
+                4 => viewModel.ColumnWidthSize.Value,
+                _ => 100
+            };
+            e.Pointer.Capture(border);
+            e.Handled = true;
+        }
+    }
+
+    private void ColumnSplitter_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isResizingColumn) return;
+        if (DataContext is not MainViewModel viewModel) return;
+
+        var currentX = e.GetCurrentPoint(this).Position.X;
+        var delta = currentX - _resizeStartX;
+        var minWidth = _resizingColumnIndex switch
+        {
+            0 or 1 => 60.0,
+            _ => 45.0
+        };
+        var newWidth = Math.Max(minWidth, _resizeStartWidth + delta);
+
+        switch (_resizingColumnIndex)
+        {
+            case 0: viewModel.ColumnWidthName = new GridLength(newWidth); break;
+            case 1: viewModel.ColumnWidthContainer = new GridLength(newWidth); break;
+            case 2: viewModel.ColumnWidthType = new GridLength(newWidth); break;
+            case 3: viewModel.ColumnWidthPathId = new GridLength(newWidth); break;
+            case 4: viewModel.ColumnWidthSize = new GridLength(newWidth); break;
+        }
+        e.Handled = true;
+    }
+
+    private void ColumnSplitter_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_isResizingColumn)
+        {
+            _isResizingColumn = false;
+            if (sender is Control control)
+            {
+                e.Pointer.Capture(null);
+            }
+            e.Handled = true;
+        }
+    }
+
+    private void ColumnSplitter_PointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _isResizingColumn = false;
+    }
+
+    private void ColumnSplitter_DoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border border && border.Tag is string tagStr && int.TryParse(tagStr, out var colIdx))
+        {
+            if (DataContext is not MainViewModel viewModel) return;
+            switch (colIdx)
+            {
+                case 0: viewModel.ColumnWidthName = new GridLength(240); break;
+                case 1: viewModel.ColumnWidthContainer = new GridLength(200); break;
+                case 2: viewModel.ColumnWidthType = new GridLength(110); break;
+                case 3: viewModel.ColumnWidthPathId = new GridLength(100); break;
+                case 4: viewModel.ColumnWidthSize = new GridLength(100); break;
+            }
+            e.Handled = true;
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         (DataContext as IDisposable)?.Dispose();
