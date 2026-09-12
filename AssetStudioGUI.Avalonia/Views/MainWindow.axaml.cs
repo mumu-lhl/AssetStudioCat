@@ -104,6 +104,53 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ExportRaw(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { SelectedAsset: { } selected } viewModel)
+        {
+            return;
+        }
+
+        var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export raw asset",
+            SuggestedFileName = MakeSafeFileName(selected.Name) + ".dat",
+            DefaultExtension = "dat",
+            FileTypeChoices = [new FilePickerFileType("Raw asset") { Patterns = ["*.dat"] }],
+        });
+        if (output?.TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedRawAsync(path);
+        }
+    }
+
+    private async void ExportDump(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { SelectedAsset: { } selected } viewModel)
+        {
+            return;
+        }
+
+        var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export complete object dump",
+            SuggestedFileName = MakeSafeFileName(selected.Name) + ".txt",
+            DefaultExtension = "txt",
+            FileTypeChoices = [new FilePickerFileType("Text dump") { Patterns = ["*.txt"] }],
+        });
+        if (output?.TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedDumpAsync(path);
+        }
+    }
+
+    private static string MakeSafeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "asset" : safe;
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         (DataContext as IDisposable)?.Dispose();

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
+using AssetStudio.AppCore.Exporting;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Inspection;
 using AssetStudio.AppCore.Loading;
@@ -17,6 +18,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private DiskAssetIndex? _currentIndex;
     private TexturePreviewService? _previewService;
     private AssetInspectionService? _inspectionService;
+    private AssetExportService? _exportService;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private string? _sourcePath;
@@ -92,7 +94,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsDumpBusy { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    public partial bool IsExportBusy { get; set; }
+
     public bool HasSelectedAsset => SelectedAsset is not null;
+
+    public bool CanExport => HasSelectedAsset && !IsExportBusy;
 
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
@@ -118,6 +126,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 new AssetObjectLoader(settings, layout),
                 new MemoryPreviewCache(settings.PreviewCacheMegabytes));
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
+            _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -247,6 +256,38 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 IsDumpBusy = false;
             }
+        }
+    }
+
+    public Task ExportSelectedRawAsync(string outputPath) =>
+        ExportSelectedAsync(outputPath, dump: false);
+
+    public Task ExportSelectedDumpAsync(string outputPath) =>
+        ExportSelectedAsync(outputPath, dump: true);
+
+    private async Task ExportSelectedAsync(string outputPath, bool dump)
+    {
+        if (SelectedAsset is null || _exportService is null || IsExportBusy)
+        {
+            return;
+        }
+
+        IsExportBusy = true;
+        StatusText = dump ? "Exporting complete dump…" : "Streaming raw asset to disk…";
+        try
+        {
+            var result = dump
+                ? await _exportService.ExportDumpAsync(SelectedAsset.IndexEntry, outputPath)
+                : await _exportService.ExportRawAsync(SelectedAsset.IndexEntry, outputPath);
+            StatusText = $"Exported {result.Files.Count} file{(result.Files.Count == 1 ? string.Empty : "s")}";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
         }
     }
 
