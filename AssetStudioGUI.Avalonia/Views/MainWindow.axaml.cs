@@ -180,6 +180,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void PlayAudio(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) await viewModel.PlaySelectedAudioAsync();
+    }
+
     private async void LoadHierarchy(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)
@@ -269,6 +274,31 @@ public partial class MainWindow : Window
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
         {
             await viewModel.ExportSelectedAnimatorAsync(path);
+        }
+    }
+
+    private async void ExportSceneModel(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a directory for the scene model FBX",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedSceneModelAsync(path);
+        }
+    }
+
+    private void SceneSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && sender is TreeView treeView)
+        {
+            viewModel.SelectSceneNode(treeView.SelectedItem as SceneNodeViewModel);
         }
     }
 

@@ -43,6 +43,10 @@ public sealed class AssetObjectLoader
             {
                 manager.SetAssetFilter(ClassIDType.Mesh, ClassIDType.Texture2D, ClassIDType.Shader);
             }
+            else if (rootType is ClassIDType.Transform or ClassIDType.RectTransform)
+            {
+                manager.SetAssetFilter(ClassIDType.Animator, ClassIDType.Mesh, ClassIDType.Texture2D, ClassIDType.Shader);
+            }
         }
         decompression.ApplyTo(manager.Options.BundleOptions);
 

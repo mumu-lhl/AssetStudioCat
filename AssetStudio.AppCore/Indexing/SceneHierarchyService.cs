@@ -33,7 +33,8 @@ public sealed class SceneHierarchyService
             nodes[new ObjectKey(transform.SerializedFile, transform.PathId)] = new MutableNode(
                 name,
                 transform.GameObjectPathId.Value,
-                gameObject?.SerializedFile ?? transform.SerializedFile);
+                gameObject?.SerializedFile ?? transform.SerializedFile,
+                transform);
         }
 
         var roots = new List<MutableNode>();
@@ -63,6 +64,7 @@ public sealed class SceneHierarchyService
         node.Name,
         node.GameObjectPathId,
         node.SerializedFile,
+        node.TransformEntry,
         node.Children.Select(ToImmutable).ToArray());
 
     private readonly record struct ObjectKey
@@ -78,11 +80,16 @@ public sealed class SceneHierarchyService
         public long PathId { get; }
     }
 
-    private sealed class MutableNode(string name, long gameObjectPathId, string serializedFile)
+    private sealed class MutableNode(
+        string name,
+        long gameObjectPathId,
+        string serializedFile,
+        AssetIndexEntry transformEntry)
     {
         public string Name { get; } = name;
         public long GameObjectPathId { get; } = gameObjectPathId;
         public string SerializedFile { get; } = serializedFile;
+        public AssetIndexEntry TransformEntry { get; } = transformEntry;
         public List<MutableNode> Children { get; } = [];
     }
 }

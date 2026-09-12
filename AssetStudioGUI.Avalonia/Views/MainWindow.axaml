@@ -29,6 +29,7 @@
         <MenuItem Header="Export complete dump…" IsEnabled="{Binding CanExport}" Click="ExportDump" />
         <Separator />
         <MenuItem Header="Export Animator as FBX…" IsEnabled="{Binding CanExportAnimator}" Click="ExportAnimator" />
+        <MenuItem Header="Export selected scene model as FBX…" IsEnabled="{Binding CanExportSceneModel}" Click="ExportSceneModel" />
         <Separator />
         <MenuItem Header="Batch converted">
           <MenuItem Header="Selected objects…" IsEnabled="{Binding HasBatchSelection}" Click="BatchConvertedSelected" />
@@ -69,7 +70,7 @@
               <Button Content="Load hierarchy" IsEnabled="{Binding HasSource}" Click="LoadHierarchy" />
               <ProgressBar Width="80" IsIndeterminate="True" IsVisible="{Binding IsHierarchyBusy}" />
             </StackPanel>
-            <TreeView Grid.Row="1" Margin="4" ItemsSource="{Binding SceneRoots}">
+            <TreeView Grid.Row="1" Margin="4" ItemsSource="{Binding SceneRoots}" SelectionChanged="SceneSelectionChanged">
               <TreeView.ItemTemplate>
                 <TreeDataTemplate x:DataType="vm:SceneNodeViewModel" ItemsSource="{Binding Children}">
                   <StackPanel Orientation="Horizontal" Spacing="6">
@@ -144,7 +145,10 @@
             <TextBlock Grid.Row="1" Margin="12,6" HorizontalAlignment="Center"
                        Foreground="{DynamicResource ThemeForegroundLowBrush}"
                        Text="{Binding PreviewMessage}" TextWrapping="Wrap" />
-            <ProgressBar Grid.Row="2" Margin="12,0,12,12" Height="5" IsIndeterminate="True" IsVisible="{Binding IsPreviewBusy}" />
+            <StackPanel Grid.Row="2" Margin="12,0,12,12" Spacing="6">
+              <Button HorizontalAlignment="Center" Content="Play in system player" IsEnabled="{Binding CanPlayAudio}" IsVisible="{Binding CanPlayAudio}" Click="PlayAudio" />
+              <ProgressBar Height="5" IsIndeterminate="True" IsVisible="{Binding IsPreviewBusy}" />
+            </StackPanel>
           </Grid>
         </TabItem>
         <TabItem Header="Dump">

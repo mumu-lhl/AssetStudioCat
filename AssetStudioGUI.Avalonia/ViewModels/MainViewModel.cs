@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Exporting;
@@ -21,6 +22,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private AssetInspectionService? _inspectionService;
     private AssetExportService? _exportService;
     private AnimatorExportService? _animatorExportService;
+    private GameObjectExportService? _gameObjectExportService;
     private ConvertedAssetExportService? _convertedExportService;
     private BatchExportService? _batchExportService;
     private CancellationTokenSource? _previewCancellation;
@@ -123,6 +125,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(HasSelectedAsset))]
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
+    [NotifyPropertyChangedFor(nameof(CanPlayAudio))]
     public partial AssetRowViewModel? SelectedAsset { get; set; }
 
     [ObservableProperty]
@@ -134,6 +137,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
+    [NotifyPropertyChangedFor(nameof(CanExportSceneModel))]
+    [NotifyPropertyChangedFor(nameof(CanPlayAudio))]
     public partial bool IsExportBusy { get; set; }
 
     [ObservableProperty]
@@ -141,6 +146,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial bool IsHierarchyBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExportSceneModel))]
+    public partial SceneNodeViewModel? SelectedSceneNode { get; set; }
 
     public bool HasSelectedAsset => SelectedAsset is not null;
 
@@ -151,6 +160,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
 
     public bool CanExportAnimator => CanExport && SelectedAsset?.Type == "Animator";
+
+    public bool CanExportSceneModel => SelectedSceneNode is not null && !IsExportBusy;
+
+    public bool CanPlayAudio => SelectedAsset?.Type == "AudioClip" && !IsExportBusy;
 
     public bool HasBatchSelection => _selectedAssets.Count > 0;
 
@@ -202,6 +215,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout), settings);
+            _gameObjectExportService = new GameObjectExportService(new AssetObjectLoader(settings, layout), settings);
             _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings);
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
             var typeCounts = await _currentIndex.GetTypeCountsAsync(cancellationToken);
@@ -395,6 +409,31 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         await ApplyFilterAsync();
     }
 
+    public void SelectSceneNode(SceneNodeViewModel? node) => SelectedSceneNode = node;
+
+    public async Task ExportSelectedSceneModelAsync(string outputDirectory)
+    {
+        if (SelectedSceneNode is null || _gameObjectExportService is null || IsExportBusy)
+        {
+            return;
+        }
+        IsExportBusy = true;
+        StatusText = $"Exporting scene model {SelectedSceneNode.Name}…";
+        try
+        {
+            var result = await _gameObjectExportService.ExportAsync(SelectedSceneNode.TransformEntry, outputDirectory);
+            StatusText = $"Scene model exported ({result.Files.Count} files)";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Scene model export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
+
     public async Task LoadSelectedDumpAsync()
     {
         if (SelectedAsset is null || _inspectionService is null || IsDumpBusy)
@@ -478,6 +517,44 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             StatusText = $"Converted export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
+
+    public async Task PlaySelectedAudioAsync()
+    {
+        if (SelectedAsset is null || _convertedExportService is null || !CanPlayAudio)
+        {
+            return;
+        }
+        IsExportBusy = true;
+        StatusText = "Preparing AudioClip for the system player…";
+        try
+        {
+            var settings = Settings.Normalize(_directories);
+            var playbackDirectory = Path.Combine(new CacheLayout(settings).Previews, "audio-playback");
+            var result = await _convertedExportService.ExportAsync(SelectedAsset.IndexEntry, playbackDirectory);
+            var file = result.Files.FirstOrDefault() ?? throw new InvalidDataException("Audio export produced no playable file.");
+            if (OperatingSystem.IsLinux())
+            {
+                Process.Start(new ProcessStartInfo("xdg-open", file) { UseShellExecute = false });
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                Process.Start(new ProcessStartInfo("open", file) { UseShellExecute = false });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
+            }
+            StatusText = result.Note ?? "Opened AudioClip in the system player";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Audio playback failed: {exception.Message}";
         }
         finally
         {
@@ -682,10 +759,12 @@ public sealed record AssetClassRowViewModel(string TypeName, long Count);
 public sealed record SceneNodeViewModel(
     string Name,
     string Details,
+    AssetIndexEntry TransformEntry,
     IReadOnlyList<SceneNodeViewModel> Children)
 {
     public static SceneNodeViewModel FromNode(SceneHierarchyNode node) => new(
         node.Name,
         $"PathID {node.GameObjectPathId}",
+        node.TransformEntry,
         node.Children.Select(FromNode).ToArray());
 }

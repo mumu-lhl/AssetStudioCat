@@ -8,8 +8,10 @@ AssetStudio libraries directly; it is not a wrapper around the CLI.
 
 The design has two equally important goals:
 
-1. Preserve the existing GUI workflows, including Animator/AnimationClip FBX
-   export, Live2D export, bundle extraction, asset filtering, and previews.
+1. Preserve the core desktop workflows: loading folders or explicit file sets,
+   paged asset browsing, scene/Animator FBX export, conversion, filtering, and
+   previews. The legacy WinForms-only Live2D and bundle-extraction dialogs remain
+   separate until their native dependencies have cross-platform replacements.
 2. Make very large bundle directories usable on machines with 8 GB of RAM by
    avoiding a permanently materialized object graph.
 
@@ -51,7 +53,8 @@ The final low-memory path is deliberately different from the existing
 
 1. Scan bundle and serialized-file metadata.
 2. Stream minimal rows into the persistent index instead of retaining every `Object`.
-3. Query only the page needed by the asset list or expanded hierarchy node.
+3. Query only the page needed by the asset list; hierarchy rows are created from
+   the disk index and only the requested model is materialized for FBX export.
 4. Materialize a typed object only for preview, inspection, or export.
 5. Resolve `PPtr` references through a lazy object store and retain objects in a
    bounded LRU cache.
@@ -70,7 +73,8 @@ decoded bitmap.
 
 ## Decompression settings
 
-Users can select `Auto`, `Memory`, or `Disk` and can choose the disk cache root.
+Users can select `Auto`, `Memory`, or `Disk` and can choose both the disk
+decompression directory and persistent cache root.
 Auto mode uses a conservative memory budget and falls back to disk before load.
 The UI performs write-access and free-space checks before starting a disk load.
 
@@ -83,10 +87,19 @@ session files.
 1. Solution scaffold and application shell.
 2. Cross-platform settings, cache layout, and configurable decompression mode.
 3. Persistent index schema, validation, rebuild, and paged queries.
-4. Folder loading, progress/cancellation, asset list, filtering, and sorting.
-5. Lazy object resolver plus text and Texture2D previews.
-6. Converted/raw/dump export and Animator dependency loading/FBX export.
-7. Scene hierarchy, audio, mesh, font, Live2D, packaging, and platform CI.
+4. Folder/file-set loading, progress/cancellation, asset list, filtering, and bounded sorting.
+5. Lazy object resolver plus Texture2D, Sprite, mesh, text, shader, and audio metadata previews.
+6. Converted/raw/dump export, Animator dependency loading/FBX export, and scene-model FBX export.
+7. Scene hierarchy, recent-source restore, cache management, audio playback handoff, packaging, and platform CI.
+
+## Current Avalonia operation model
+
+- Opening a folder creates one independent index key; opening multiple files creates a key from the complete ordered selection. They never share or overwrite an index.
+- The first open streams rows into `assets.jsonl` and writes a seek table. Later opens validate the source fingerprint and reuse the index. The cache manager can delete one index, and **Rebuild index** creates it again.
+- The asset list reads at most one 250-row page. Search/type filtering streams the index; non-index sorting retains only the requested page plus its offset in a bounded priority queue.
+- Selecting a row reopens its owning bundle only when preview, dump, converted export, raw export, or FBX export needs the real Unity object; preview data is held in a byte-bounded cache.
+- Audio preview displays metadata. **Play in system player** exports only that clip into the cache's playback directory and asks Windows, macOS, or Linux to open it with the default player.
+- Loading and rebuilding have cancellation; a newer filter/sort query cancels its predecessor so stale results cannot replace the current page.
 
 Commits are made at the end of these coherent slices rather than per file.
 
