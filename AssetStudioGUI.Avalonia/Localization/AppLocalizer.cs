@@ -177,6 +177,15 @@ public sealed class AppLocalizer : INotifyPropertyChanged
         ["DecompressionAuto"] = "Bundle decompression: automatic",
         ["CacheSummary"] = "{0:N0} indexes — {1:N1} MB",
         ["ScenePathId"] = "PathID {0}",
+        ["MeshShaded"] = "Shaded",
+        ["MeshWireframe"] = "Wireframe",
+        ["MeshShadedWireframe"] = "Shaded + Wire",
+        ["MeshLighting"] = "Lighting",
+        ["MeshVertexColor"] = "Vertex Color",
+        ["MeshOriginalNormals"] = "Original Normals",
+        ["MeshSmoothNormals"] = "Smooth Normals",
+        ["ResetCamera"] = "Reset View",
+        ["MeshInteractionTip"] = "L-drag: Rotate | R/M-drag: Pan | Wheel: Zoom | Dbl-click: Reset",
     };
 
     private static readonly IReadOnlyDictionary<string, string> SimplifiedChineseStrings = new Dictionary<string, string>
@@ -346,6 +355,15 @@ public sealed class AppLocalizer : INotifyPropertyChanged
         ["DecompressionAuto"] = "Bundle 解压：自动",
         ["CacheSummary"] = "{0:N0} 个索引 — {1:N1} MB",
         ["ScenePathId"] = "路径 ID {0}",
+        ["MeshShaded"] = "着色模式",
+        ["MeshWireframe"] = "线框模式",
+        ["MeshShadedWireframe"] = "着色 + 线框",
+        ["MeshLighting"] = "光照着色",
+        ["MeshVertexColor"] = "顶点颜色",
+        ["MeshOriginalNormals"] = "原始法线",
+        ["MeshSmoothNormals"] = "平滑法线",
+        ["ResetCamera"] = "复位视角",
+        ["MeshInteractionTip"] = "左键旋转 | 右键/中键平移 | 滚轮缩放 | 双击复位",
     };
 
     private string _language = English;

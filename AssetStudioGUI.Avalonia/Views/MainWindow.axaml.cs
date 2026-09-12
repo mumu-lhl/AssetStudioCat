@@ -376,6 +376,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CycleMeshWireframe(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) viewModel.CycleMeshWireframeMode();
+    }
+
+    private void CycleMeshShade(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) viewModel.CycleMeshShadeMode();
+    }
+
+    private void ToggleMeshNormals(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel) viewModel.ToggleMeshNormals();
+    }
+
+    private void ResetMeshCamera(object? sender, RoutedEventArgs e)
+    {
+        var viewport = this.FindControl<Controls.MeshViewportControl>("MeshViewport");
+        viewport?.ResetCamera();
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         (DataContext as IDisposable)?.Dispose();

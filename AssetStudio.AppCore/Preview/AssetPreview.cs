@@ -4,4 +4,5 @@ public sealed record AssetPreview(
     byte[]? PngData,
     string? Text,
     string Information,
-    bool FromCache = false);
+    bool FromCache = false,
+    MeshGeometryData? MeshGeometry = null);

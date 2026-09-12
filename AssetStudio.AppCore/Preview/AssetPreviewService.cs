@@ -1,3 +1,6 @@
+namespace AssetStudio.AppCore.Preview;
+
+using System.Numerics;
 using System.Text;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
@@ -6,8 +9,7 @@ using AssetStudio.AppCore.Loading;
 using global::AssetStudio;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-
-namespace AssetStudio.AppCore.Preview;
+using Vector3 = System.Numerics.Vector3;
 
 public sealed class AssetPreviewService
 {
@@ -147,19 +149,34 @@ public sealed class AssetPreviewService
             throw new InvalidDataException("The Mesh contains no vertices.");
         }
 
-        const int width = 800;
-        const int height = 800;
-        var stride = mesh.m_Vertices.Length == mesh.m_VertexCount * 4 ? 4 : 3;
-        var projected = new (float X, float Y)[mesh.m_VertexCount];
+        var vertexCount = mesh.m_VertexCount;
+        var stride = mesh.m_Vertices.Length == vertexCount * 4 ? 4 : 3;
+        var positions = new float[vertexCount * 3];
+        var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        var projected = new (float X, float Y)[vertexCount];
         var minX = float.MaxValue;
         var minY = float.MaxValue;
         var maxX = float.MinValue;
         var maxY = float.MinValue;
-        for (var index = 0; index < mesh.m_VertexCount; index++)
+
+        for (var index = 0; index < vertexCount; index++)
         {
             var x = mesh.m_Vertices[index * stride];
             var y = mesh.m_Vertices[index * stride + 1];
             var z = mesh.m_Vertices[index * stride + 2];
+
+            positions[index * 3] = x;
+            positions[index * 3 + 1] = y;
+            positions[index * 3 + 2] = z;
+
+            min.X = Math.Min(min.X, x);
+            min.Y = Math.Min(min.Y, y);
+            min.Z = Math.Min(min.Z, z);
+            max.X = Math.Max(max.X, x);
+            max.Y = Math.Max(max.Y, y);
+            max.Z = Math.Max(max.Z, z);
+
             var px = x - z * 0.5f;
             var py = y + (x + z) * 0.25f;
             projected[index] = (px, py);
@@ -168,19 +185,88 @@ public sealed class AssetPreviewService
             maxX = Math.Max(maxX, px);
             maxY = Math.Max(maxY, py);
         }
+
+        var totalTriangles = mesh.m_Indices.Count / 3;
+        var validIndices = new uint[totalTriangles * 3];
+        for (var i = 0; i < totalTriangles * 3; i++)
+        {
+            validIndices[i] = mesh.m_Indices[i];
+        }
+
+        // Normals
+        float[] normals;
+        float[]? calculatedNormals = null;
+        if (mesh.m_Normals != null && mesh.m_Normals.Length > 0)
+        {
+            normals = new float[vertexCount * 3];
+            var normalStride = mesh.m_Normals.Length == vertexCount * 4 ? 4 : 3;
+            for (var i = 0; i < vertexCount; i++)
+            {
+                normals[i * 3] = mesh.m_Normals[i * normalStride];
+                normals[i * 3 + 1] = mesh.m_Normals[i * normalStride + 1];
+                normals[i * 3 + 2] = mesh.m_Normals[i * normalStride + 2];
+            }
+            calculatedNormals = CalculateSmoothNormals(positions, validIndices, vertexCount);
+        }
+        else
+        {
+            normals = CalculateSmoothNormals(positions, validIndices, vertexCount);
+        }
+
+        // Colors
+        float[]? colors = null;
+        if (mesh.m_Colors != null && mesh.m_Colors.Length > 0)
+        {
+            var colorStride = mesh.m_Colors.Length == vertexCount * 4 ? 4 : 3;
+            colors = new float[vertexCount * 4];
+            for (var i = 0; i < vertexCount; i++)
+            {
+                colors[i * 4] = mesh.m_Colors[i * colorStride];
+                colors[i * 4 + 1] = mesh.m_Colors[i * colorStride + 1];
+                colors[i * 4 + 2] = mesh.m_Colors[i * colorStride + 2];
+                colors[i * 4 + 3] = colorStride == 4 ? mesh.m_Colors[i * colorStride + 3] : 1.0f;
+            }
+        }
+
+        var center = (min + max) * 0.5f;
+        var extents = max - min;
+        var boundingRadius = (max - center).Length();
+        if (boundingRadius < 0.0001f)
+        {
+            boundingRadius = 1.0f;
+        }
+
+        var geometry = new MeshGeometryData
+        {
+            Positions = positions,
+            Normals = normals,
+            CalculatedNormals = calculatedNormals,
+            Colors = colors,
+            Indices = validIndices,
+            VertexCount = vertexCount,
+            TriangleCount = totalTriangles,
+            Min = min,
+            Max = max,
+            Center = center,
+            Extents = extents,
+            BoundingRadius = boundingRadius
+        };
+
+        const int width = 800;
+        const int height = 800;
         var scale = Math.Min((width - 40f) / Math.Max(0.0001f, maxX - minX),
             (height - 40f) / Math.Max(0.0001f, maxY - minY));
         using var image = new Image<Rgba32>(width, height, new Rgba32(28, 31, 36));
-        var triangleCount = Math.Min(mesh.m_Indices.Count / 3, MaximumMeshTriangles);
+        var triangleCount = Math.Min(totalTriangles, MaximumMeshTriangles);
         for (var triangle = 0; triangle < triangleCount; triangle++)
         {
             if ((triangle & 255) == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
-            var a = (int)mesh.m_Indices[triangle * 3];
-            var b = (int)mesh.m_Indices[triangle * 3 + 1];
-            var c = (int)mesh.m_Indices[triangle * 3 + 2];
+            var a = (int)validIndices[triangle * 3];
+            var b = (int)validIndices[triangle * 3 + 1];
+            var c = (int)validIndices[triangle * 3 + 2];
             if ((uint)a >= (uint)projected.Length || (uint)b >= (uint)projected.Length || (uint)c >= (uint)projected.Length)
             {
                 continue;
@@ -194,11 +280,59 @@ public sealed class AssetPreviewService
         return new AssetPreview(
             output.ToArray(),
             null,
-            $"{entry.Name}\nMesh\nVertices: {mesh.m_VertexCount:N0}\nTriangles shown: {triangleCount:N0} / {mesh.m_Indices.Count / 3:N0}\nPathID: {entry.PathId}");
+            $"{entry.Name}\nMesh\nVertices: {mesh.m_VertexCount:N0}\nTriangles: {totalTriangles:N0}\nPathID: {entry.PathId}",
+            false,
+            geometry);
 
         (int X, int Y) ToPixel((float X, float Y) point) => (
             (int)((point.X - minX) * scale + 20),
             height - 1 - (int)((point.Y - minY) * scale + 20));
+    }
+
+    private static float[] CalculateSmoothNormals(float[] positions, uint[] indices, int vertexCount)
+    {
+        var normals = new Vector3[vertexCount];
+        var counts = new int[vertexCount];
+
+        for (var i = 0; i < indices.Length; i += 3)
+        {
+            var i0 = (int)indices[i];
+            var i1 = (int)indices[i + 1];
+            var i2 = (int)indices[i + 2];
+
+            if ((uint)i0 >= (uint)vertexCount || (uint)i1 >= (uint)vertexCount || (uint)i2 >= (uint)vertexCount)
+                continue;
+
+            var v0 = new Vector3(positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]);
+            var v1 = new Vector3(positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]);
+            var v2 = new Vector3(positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]);
+
+            var dir1 = v1 - v0;
+            var dir2 = v2 - v0;
+            var normal = Vector3.Cross(dir1, dir2);
+            if (normal.LengthSquared() > 1e-10f)
+            {
+                normal = Vector3.Normalize(normal);
+                normals[i0] += normal;
+                normals[i1] += normal;
+                normals[i2] += normal;
+                counts[i0]++;
+                counts[i1]++;
+                counts[i2]++;
+            }
+        }
+
+        var result = new float[vertexCount * 3];
+        for (var i = 0; i < vertexCount; i++)
+        {
+            var n = counts[i] > 0 && normals[i].LengthSquared() > 1e-10f
+                ? Vector3.Normalize(normals[i])
+                : Vector3.UnitY;
+            result[i * 3] = n.X;
+            result[i * 3 + 1] = n.Y;
+            result[i * 3 + 2] = n.Z;
+        }
+        return result;
     }
 
     private static void DrawLine(Image<Rgba32> image, (int X, int Y) start, (int X, int Y) end)

@@ -129,7 +129,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPreviewImage))]
+    [NotifyPropertyChangedFor(nameof(ShowPreviewImage))]
     public partial Bitmap? PreviewImage { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviewMesh))]
+    [NotifyPropertyChangedFor(nameof(ShowPreviewImage))]
+    public partial MeshGeometryData? PreviewMeshGeometry { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeshWireframeButtonText))]
+    public partial int MeshWireframeMode { get; set; } = 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeshShadeButtonText))]
+    public partial int MeshShadeMode { get; set; } = 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeshNormalsButtonText))]
+    public partial bool MeshUseCalculatedNormals { get; set; } = false;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPreviewText))]
@@ -178,7 +196,43 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public bool HasPreviewImage => PreviewImage is not null;
 
+    public bool HasPreviewMesh => PreviewMeshGeometry is not null;
+
+    public bool ShowPreviewImage => HasPreviewImage && !HasPreviewMesh;
+
     public bool HasPreviewText => !string.IsNullOrEmpty(PreviewText);
+
+    public string MeshWireframeButtonText => MeshWireframeMode switch
+    {
+        1 => T("MeshWireframe"),
+        2 => T("MeshShadedWireframe"),
+        _ => T("MeshShaded")
+    };
+
+    public string MeshShadeButtonText => MeshShadeMode switch
+    {
+        1 => T("MeshVertexColor"),
+        _ => T("MeshLighting")
+    };
+
+    public string MeshNormalsButtonText => MeshUseCalculatedNormals
+        ? T("MeshSmoothNormals")
+        : T("MeshOriginalNormals");
+
+    public void CycleMeshWireframeMode()
+    {
+        MeshWireframeMode = (MeshWireframeMode + 1) % 3;
+    }
+
+    public void CycleMeshShadeMode()
+    {
+        MeshShadeMode = (MeshShadeMode + 1) % 2;
+    }
+
+    public void ToggleMeshNormals()
+    {
+        MeshUseCalculatedNormals = !MeshUseCalculatedNormals;
+    }
 
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
 
@@ -333,6 +387,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         var previousImage = PreviewImage;
         PreviewImage = null;
+        PreviewMeshGeometry = null;
         PreviewText = null;
         previousImage?.Dispose();
         if (row is null)
@@ -365,6 +420,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 using var stream = new MemoryStream(preview.PngData, writable: false);
                 PreviewImage = new Bitmap(stream);
             }
+            PreviewMeshGeometry = preview.MeshGeometry;
             PreviewText = preview.Text;
             PreviewMessage = preview.FromCache ? T("PreviewCacheHit") : string.Empty;
             AssetInformation = preview.Information;
@@ -834,6 +890,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(DecompressionSummary));
+        OnPropertyChanged(nameof(MeshWireframeButtonText));
+        OnPropertyChanged(nameof(MeshShadeButtonText));
+        OnPropertyChanged(nameof(MeshNormalsButtonText));
     }
 
     private void NotifyNavigationChanged()
