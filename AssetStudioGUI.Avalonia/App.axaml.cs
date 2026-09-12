@@ -21,7 +21,7 @@ public partial class App : Application
         {
             var directories = AppDirectories.Detect();
             var settingsStore = new AppSettingsStore(directories);
-            var settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
+            var settings = Task.Run(() => settingsStore.LoadAsync()).GetAwaiter().GetResult();
             var localizer = new AppLocalizer(settings.Language);
             desktop.MainWindow = new MainWindow(settingsStore, localizer)
             {
