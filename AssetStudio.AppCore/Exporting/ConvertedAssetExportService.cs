@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Loading;
+using AssetStudio.AppCore.Configuration;
 using global::AssetStudio;
 
 namespace AssetStudio.AppCore.Exporting;
@@ -10,10 +11,12 @@ public sealed class ConvertedAssetExportService
 {
     private const int BufferSize = 128 * 1024;
     private readonly AssetObjectLoader _objectLoader;
+    private readonly AppSettings _settings;
 
-    public ConvertedAssetExportService(AssetObjectLoader objectLoader)
+    public ConvertedAssetExportService(AssetObjectLoader objectLoader, AppSettings settings)
     {
         _objectLoader = objectLoader;
+        _settings = settings;
     }
 
     public Task<AssetExportResult> ExportAsync(
@@ -38,9 +41,9 @@ public sealed class ConvertedAssetExportService
         Directory.CreateDirectory(outputDirectory);
         return session.Asset switch
         {
-            Texture2D texture => ExportTexture(texture, entry, outputDirectory),
-            Sprite sprite => ExportSprite(sprite, entry, outputDirectory),
-            AudioClip audio => ExportAudio(audio, entry, outputDirectory),
+            Texture2D texture => ExportTexture(texture, entry, outputDirectory, _settings.ConvertedImageFormat),
+            Sprite sprite => ExportSprite(sprite, entry, outputDirectory, _settings.ConvertedImageFormat, _settings.ExportSpriteWithMask),
+            AudioClip audio => ExportAudio(audio, entry, outputDirectory, _settings.ConvertAudioToWav),
             VideoClip video => ExportVideo(video, entry, outputDirectory),
             MovieTexture movie => ExportBytes(movie.m_MovieData, entry, outputDirectory, ".ogv"),
             Shader shader => ExportText(shader.Convert(), entry, outputDirectory, ".shader"),
@@ -56,33 +59,46 @@ public sealed class ConvertedAssetExportService
         };
     }
 
-    private static AssetExportResult ExportTexture(Texture2D texture, AssetIndexEntry entry, string directory)
+    private static AssetExportResult ExportTexture(
+        Texture2D texture,
+        AssetIndexEntry entry,
+        string directory,
+        ConvertedImageFormat format)
     {
         using var image = texture.ConvertToImage(flip: true)
             ?? throw new InvalidDataException("The texture format could not be decoded.");
-        var path = GetAvailablePath(directory, entry, ".png");
+        var path = GetAvailablePath(directory, entry, GetImageExtension(format));
         WriteAtomically(path, temporaryPath =>
         {
             using var output = File.Create(temporaryPath);
-            image.WriteToStream(output, ImageFormat.Png);
+            image.WriteToStream(output, ToImageFormat(format));
         });
         return new AssetExportResult([path]);
     }
 
-    private static AssetExportResult ExportSprite(Sprite sprite, AssetIndexEntry entry, string directory)
+    private static AssetExportResult ExportSprite(
+        Sprite sprite,
+        AssetIndexEntry entry,
+        string directory,
+        ConvertedImageFormat format,
+        bool exportMask)
     {
-        using var image = sprite.GetImage(SpriteMaskMode.Export)
+        using var image = sprite.GetImage(exportMask ? SpriteMaskMode.Export : SpriteMaskMode.Off)
             ?? throw new InvalidDataException("The Sprite texture or atlas dependency could not be resolved.");
-        var path = GetAvailablePath(directory, entry, ".png");
+        var path = GetAvailablePath(directory, entry, GetImageExtension(format));
         WriteAtomically(path, temporaryPath =>
         {
             using var output = File.Create(temporaryPath);
-            image.WriteToStream(output, ImageFormat.Png);
+            image.WriteToStream(output, ToImageFormat(format));
         });
         return new AssetExportResult([path]);
     }
 
-    private static AssetExportResult ExportAudio(AudioClip audio, AssetIndexEntry entry, string directory)
+    private static AssetExportResult ExportAudio(
+        AudioClip audio,
+        AssetIndexEntry entry,
+        string directory,
+        bool convertToWav)
     {
         var size = audio.m_AudioData.Size;
         if (size <= 0)
@@ -102,7 +118,7 @@ public sealed class ConvertedAssetExportService
             try
             {
                 var converter = new AudioClipConverter(audio);
-                if (converter.IsSupport || converter.IsLegacy)
+                if (convertToWav && (converter.IsSupport || converter.IsLegacy))
                 {
                     var log = string.Empty;
                     var wav = converter.IsLegacy
@@ -233,6 +249,18 @@ public sealed class ConvertedAssetExportService
         var containerExtension = Path.GetExtension(entry.Container);
         return string.IsNullOrWhiteSpace(containerExtension) ? ".txt" : containerExtension;
     }
+
+    private static ImageFormat ToImageFormat(ConvertedImageFormat format) => format switch
+    {
+        ConvertedImageFormat.Jpeg => ImageFormat.Jpeg,
+        ConvertedImageFormat.Webp => ImageFormat.Webp,
+        ConvertedImageFormat.Bmp => ImageFormat.Bmp,
+        ConvertedImageFormat.Tga => ImageFormat.Tga,
+        _ => ImageFormat.Png,
+    };
+
+    private static string GetImageExtension(ConvertedImageFormat format) =>
+        "." + format.ToString().ToLowerInvariant();
 
     private static AssetExportResult ExportText(string text, AssetIndexEntry entry, string directory, string extension) =>
         ExportBytes(new UTF8Encoding(false).GetBytes(text), entry, directory, extension);

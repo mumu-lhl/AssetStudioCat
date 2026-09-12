@@ -5,7 +5,7 @@
         x:DataType="vm:SettingsViewModel"
         Title="Settings"
         Width="620"
-        Height="430"
+        Height="680"
         MinWidth="520"
         MinHeight="390"
         WindowStartupLocation="CenterOwner">
@@ -38,6 +38,24 @@
 
         <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Preview cache limit (MB)" />
         <NumericUpDown Minimum="32" Maximum="4096" Increment="32" Value="{Binding PreviewCacheMegabytes}" />
+
+        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="Converted export" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Texture and Sprite image format" />
+        <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding SelectedImageFormat}" />
+        <CheckBox Content="Apply Sprite alpha mask" IsChecked="{Binding ExportSpriteWithMask}" />
+        <CheckBox Content="Convert supported AudioClips to WAV" IsChecked="{Binding ConvertAudioToWav}" />
+
+        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="FBX export" />
+        <WrapPanel Orientation="Horizontal">
+          <CheckBox Margin="0,0,16,6" Content="Animations" IsChecked="{Binding FbxExportAnimations}" />
+          <CheckBox Margin="0,0,16,6" Content="Skins" IsChecked="{Binding FbxExportSkins}" />
+          <CheckBox Margin="0,0,16,6" Content="BlendShapes" IsChecked="{Binding FbxExportBlendShapes}" />
+          <CheckBox Margin="0,0,16,6" Content="All nodes" IsChecked="{Binding FbxExportAllNodes}" />
+          <CheckBox Margin="0,0,16,6" Content="Euler filter" IsChecked="{Binding FbxEulerFilter}" />
+          <CheckBox Margin="0,0,16,6" Content="ASCII FBX" IsChecked="{Binding FbxAscii}" />
+        </WrapPanel>
+        <TextBlock FontWeight="SemiBold" Text="FBX scale factor" />
+        <NumericUpDown Minimum="0.0001" Maximum="10000" Increment="0.1" Value="{Binding FbxScaleFactor}" />
       </StackPanel>
     </ScrollViewer>
 

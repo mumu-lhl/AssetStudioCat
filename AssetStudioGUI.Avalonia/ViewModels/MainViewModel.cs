@@ -149,8 +149,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 new MemoryPreviewCache(settings.PreviewCacheMegabytes));
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
-            _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout));
-            _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout));
+            _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout), settings);
+            _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings);
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
             var typeCounts = await _currentIndex.GetTypeCountsAsync();
             AssetTypes.Clear();

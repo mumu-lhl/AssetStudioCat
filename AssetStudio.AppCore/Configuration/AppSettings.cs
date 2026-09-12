@@ -2,7 +2,7 @@ namespace AssetStudio.AppCore.Configuration;
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -18,6 +18,26 @@ public sealed class AppSettings
 
     public long AutoMemoryLimitBytes { get; set; } = 2L * 1024 * 1024 * 1024;
 
+    public ConvertedImageFormat ConvertedImageFormat { get; set; } = ConvertedImageFormat.Png;
+
+    public bool ExportSpriteWithMask { get; set; } = true;
+
+    public bool ConvertAudioToWav { get; set; } = true;
+
+    public bool FbxExportAnimations { get; set; } = true;
+
+    public bool FbxExportSkins { get; set; } = true;
+
+    public bool FbxExportBlendShapes { get; set; } = true;
+
+    public bool FbxExportAllNodes { get; set; } = true;
+
+    public bool FbxEulerFilter { get; set; } = true;
+
+    public bool FbxAscii { get; set; }
+
+    public double FbxScaleFactor { get; set; } = 1.0;
+
     public AppSettings Normalize(AppDirectories directories)
     {
         SchemaVersion = CurrentSchemaVersion;
@@ -27,6 +47,7 @@ public sealed class AppSettings
             AutoMemoryLimitBytes,
             128L * 1024 * 1024,
             int.MaxValue);
+        FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
         CacheRoot = NormalizePath(CacheRoot, directories.DefaultCacheDirectory);
         DecompressionDirectory = NormalizePath(
             DecompressionDirectory,

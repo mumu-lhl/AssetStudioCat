@@ -1,5 +1,6 @@
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Loading;
+using AssetStudio.AppCore.Configuration;
 using global::AssetStudio;
 
 namespace AssetStudio.AppCore.Exporting;
@@ -8,10 +9,12 @@ public sealed class AnimatorExportService
 {
     private static readonly object FbxExportLock = new();
     private readonly AssetObjectLoader _objectLoader;
+    private readonly AppSettings _appSettings;
 
-    public AnimatorExportService(AssetObjectLoader objectLoader)
+    public AnimatorExportService(AssetObjectLoader objectLoader, AppSettings appSettings)
     {
         _objectLoader = objectLoader;
+        _appSettings = appSettings;
     }
 
     public Task<AssetExportResult> ExportAsync(
@@ -46,8 +49,17 @@ public sealed class AnimatorExportService
         try
         {
             var temporaryFbx = Path.Combine(temporaryDirectory, safeName + ".fbx");
-            var converter = new ModelConverter(animator, ImageFormat.Png);
-            var settings = new Fbx.Settings();
+            var converter = new ModelConverter(animator, ToImageFormat(_appSettings.ConvertedImageFormat));
+            var settings = new Fbx.Settings
+            {
+                ExportAnimations = _appSettings.FbxExportAnimations,
+                ExportSkins = _appSettings.FbxExportSkins,
+                ExportBlendShape = _appSettings.FbxExportBlendShapes,
+                ExportAllNodes = _appSettings.FbxExportAllNodes,
+                EulerFilter = _appSettings.FbxEulerFilter,
+                ScaleFactor = (float)_appSettings.FbxScaleFactor,
+                FbxFormat = _appSettings.FbxAscii ? 1 : 0,
+            };
             lock (FbxExportLock)
             {
                 var previousDirectory = Directory.GetCurrentDirectory();
@@ -102,4 +114,13 @@ public sealed class AnimatorExportService
             .Trim(' ', '.');
         return string.IsNullOrWhiteSpace(safe) ? "Animator" : safe;
     }
+
+    private static ImageFormat ToImageFormat(ConvertedImageFormat format) => format switch
+    {
+        ConvertedImageFormat.Jpeg => ImageFormat.Jpeg,
+        ConvertedImageFormat.Webp => ImageFormat.Webp,
+        ConvertedImageFormat.Bmp => ImageFormat.Bmp,
+        ConvertedImageFormat.Tga => ImageFormat.Tga,
+        _ => ImageFormat.Png,
+    };
 }
