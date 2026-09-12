@@ -3,11 +3,11 @@ name: Avalonia GUI CI
 on:
   push:
     branches:
-      - AssetStudioMod
+      - main
       - "feature/**"
   pull_request:
     branches:
-      - AssetStudioMod
+      - main
   workflow_dispatch:
 
 concurrency:

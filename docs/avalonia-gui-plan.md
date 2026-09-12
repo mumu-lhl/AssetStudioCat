@@ -109,7 +109,7 @@ Commits are made at the end of these coherent slices rather than per file.
 ## Continuous integration and releases
 
 - `Avalonia GUI CI` builds the GUI and runs AppCore tests on Windows, Ubuntu,
-  and macOS for feature-branch pushes and pull requests to `AssetStudioMod`.
+  and macOS for feature-branch pushes and pull requests to `main`.
 - Pushing a tag matching `v*` runs tests, publishes self-contained packages for
   `win-x64`, `linux-x64`, `osx-x64`, and `osx-arm64`, generates SHA-256 sums,
   and creates a GitHub Release with generated notes.
