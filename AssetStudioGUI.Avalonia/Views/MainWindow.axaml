@@ -109,7 +109,7 @@
             <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding L[Container]}" />
             <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="{Binding L[Type]}" />
             <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="{Binding L[PathId]}" />
-            <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="{Binding L[Size]}" />
+            <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="{Binding L[SizeMegabytes]}" />
           </Grid>
         </Border>
         <ListBox Grid.Row="1" ItemsSource="{Binding Assets}" SelectionMode="Multiple" SelectionChanged="AssetSelectionChanged">
@@ -120,7 +120,7 @@
                 <TextBlock Grid.Column="1" Text="{Binding Container}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="2" Text="{Binding Type}" />
                 <TextBlock Grid.Column="3" Text="{Binding PathId}" />
-                <TextBlock Grid.Column="4" Text="{Binding Size}" />
+                <TextBlock Grid.Column="4" Text="{Binding SizeMegabytes}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>

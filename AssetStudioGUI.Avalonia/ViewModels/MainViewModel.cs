@@ -872,7 +872,10 @@ public sealed record AssetRowViewModel(
     string Type,
     long PathId,
     long Size,
-    AssetIndexEntry IndexEntry);
+    AssetIndexEntry IndexEntry)
+{
+    public string SizeMegabytes => (Size / 1024d / 1024d).ToString("N2");
+}
 
 public sealed record AssetClassRowViewModel(string TypeName, long Count);
 
