@@ -165,13 +165,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void TypeFilterChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (DataContext is MainViewModel { IsBusy: false } viewModel)
-        {
-            await viewModel.ApplyFilterAsync();
-        }
-    }
 
     private async void SortChanged(object? sender, SelectionChangedEventArgs e)
     {

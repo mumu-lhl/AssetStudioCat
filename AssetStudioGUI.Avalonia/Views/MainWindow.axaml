@@ -68,7 +68,7 @@
           <ComboBox Width="110" ItemsSource="{Binding SortFields}" SelectedItem="{Binding SelectedSortField}" SelectionChanged="SortChanged" />
           <CheckBox VerticalAlignment="Center" Content="{Binding L[Descending]}" IsChecked="{Binding SortDescending}" Click="SortDirectionChanged" />
         </StackPanel>
-        <ComboBox Grid.Column="3" Margin="0,0,8,0" ItemsSource="{Binding AssetTypes}" SelectedItem="{Binding SelectedType}" SelectionChanged="TypeFilterChanged" />
+        <ComboBox Grid.Column="3" Margin="0,0,8,0" ItemsSource="{Binding AssetTypes}" SelectedItem="{Binding SelectedType}" />
         <TextBox Grid.Column="4" Classes="clearButton" PlaceholderText="{Binding L[FilterByName]}" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />
       </Grid>
     </Border>

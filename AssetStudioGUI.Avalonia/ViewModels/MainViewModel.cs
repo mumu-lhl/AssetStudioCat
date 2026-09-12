@@ -74,7 +74,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public string Title => "AssetStudioCat";
 
-    public ObservableCollection<AssetRowViewModel> Assets { get; } = [];
+    public FastObservableCollection<AssetRowViewModel> Assets { get; } = [];
 
     public ObservableCollection<string> AssetTypes { get; } = [];
 
@@ -148,6 +148,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(IsFlatViewMode))]
     [NotifyPropertyChangedFor(nameof(IsDirectoryViewMode))]
     public partial string SelectedType { get; set; } = string.Empty;
+ 
+    partial void OnSelectedTypeChanged(string oldValue, string newValue)
+    {
+        if (_currentIndex is not null && !IsBusy)
+        {
+            _ = ApplyFilterAsync();
+        }
+    }
 
     public bool IsFlatViewMode => !string.IsNullOrWhiteSpace(ActiveSearchText)
         || (!string.IsNullOrEmpty(SelectedType) && SelectedType != _allTypesLabel);
@@ -596,29 +604,46 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public async Task SelectContainerNodeAsync(ContainerTreeNodeViewModel? node)
     {
         SelectedContainerNode = node;
+        string? newPath;
+        string? newTitle;
+        bool newExact;
+
         if (node is null || string.IsNullOrEmpty(node.FullPath))
         {
-            SelectedContainerPath = null;
-            SelectedContainerTitle = null;
-            SelectedContainerExact = false;
+            newPath = null;
+            newTitle = null;
+            newExact = false;
         }
         else if (node.FullPath == "(No Container)")
         {
-            SelectedContainerPath = "(No Container)";
-            SelectedContainerTitle = _localizer["NoContainerGroup"];
-            SelectedContainerExact = true;
+            newPath = "(No Container)";
+            newTitle = _localizer["NoContainerGroup"];
+            newExact = true;
         }
         else
         {
-            SelectedContainerPath = node.FullPath;
-            SelectedContainerTitle = node.Name;
-            SelectedContainerExact = !node.IsDirectory || node.Children.Count == 0;
+            newPath = node.FullPath;
+            newTitle = node.Name;
+            newExact = !node.IsDirectory || node.Children.Count == 0;
         }
+
+        if (SelectedContainerPath == newPath && SelectedContainerExact == newExact)
+        {
+            return;
+        }
+
+        SelectedContainerPath = newPath;
+        SelectedContainerTitle = newTitle;
+        SelectedContainerExact = newExact;
         await ApplyFilterAsync();
     }
 
     public async Task ClearContainerFilterAsync()
     {
+        if (SelectedContainerPath is null && !SelectedContainerExact && SelectedContainerNode is null)
+        {
+            return;
+        }
         SelectedContainerPath = null;
         SelectedContainerTitle = null;
         SelectedContainerExact = false;
@@ -626,14 +651,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         await ApplyFilterAsync();
     }
 
-    public async Task SelectAssetClassAsync(AssetClassRowViewModel? assetClass)
+    public Task SelectAssetClassAsync(AssetClassRowViewModel? assetClass)
     {
-        if (assetClass is null)
+        if (assetClass is null || SelectedType == assetClass.TypeName)
         {
-            return;
+            return Task.CompletedTask;
         }
         SelectedType = assetClass.TypeName;
-        await ApplyFilterAsync();
+        return Task.CompletedTask;
     }
 
     public void SelectSceneNode(SceneNodeViewModel? node) => SelectedSceneNode = node;
@@ -952,18 +977,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _pageCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = _pageCancellation.Token;
         var generation = ++_pageGeneration;
+        var query = new AssetIndexQuery(
+            offset,
+            PageSize,
+            string.IsNullOrWhiteSpace(ActiveSearchText) ? null : ActiveSearchText,
+            SelectedType == _allTypesLabel ? null : SelectedType,
+            SelectedContainerPath,
+            SelectedContainerExact,
+            SelectedSortField,
+            SortDescending);
         AssetIndexPage page;
         try
         {
-            page = await _currentIndex.QueryAsync(new AssetIndexQuery(
-                offset,
-                PageSize,
-                string.IsNullOrWhiteSpace(ActiveSearchText) ? null : ActiveSearchText,
-                SelectedType == _allTypesLabel ? null : SelectedType,
-                SelectedContainerPath,
-                SelectedContainerExact,
-                SelectedSortField,
-                SortDescending), token);
+            page = await Task.Run(() => _currentIndex.QueryAsync(query, token), token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -973,10 +999,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             return;
         }
-        Assets.Clear();
+        var rows = new List<AssetRowViewModel>(page.Items.Count);
         foreach (var entry in page.Items)
         {
-            Assets.Add(new AssetRowViewModel(
+            rows.Add(new AssetRowViewModel(
                 entry.Name,
                 entry.Container ?? string.Empty,
                 entry.TypeName,
@@ -984,6 +1010,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 entry.ByteSize,
                 entry));
         }
+        Assets.ReplaceAll(rows);
         _pageOffset = page.Offset;
         NextOffset = page.NextOffset;
         OnPropertyChanged(nameof(PageSummary));

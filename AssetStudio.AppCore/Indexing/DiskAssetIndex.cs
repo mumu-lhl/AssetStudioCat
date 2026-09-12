@@ -13,6 +13,8 @@ public sealed class DiskAssetIndex : IAssetIndex
     private const string OffsetsFileName = "assets.offsets";
     private readonly string _indexRoot;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private volatile AssetIndexEntry[]? _cachedEntries;
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     public DiskAssetIndex(string indexesRoot, string sourcePath)
     {
@@ -40,11 +42,13 @@ public sealed class DiskAssetIndex : IAssetIndex
             var rowsPath = Path.Combine(staging, RowsFileName);
             var offsetsPath = Path.Combine(staging, OffsetsFileName);
             long count = 0;
+            var cached = new List<AssetIndexEntry>();
             await using (var rows = new FileStream(rowsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, true))
             await using (var offsets = new FileStream(offsetsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 16 * 1024, true))
             {
                 await foreach (var entry in entries.WithCancellation(cancellationToken))
                 {
+                    cached.Add(entry);
                     var offsetBytes = BitConverter.GetBytes(rows.Position);
                     await offsets.WriteAsync(offsetBytes, cancellationToken);
                     await JsonSerializer.SerializeAsync(rows, entry, _jsonOptions, cancellationToken);
@@ -60,6 +64,7 @@ public sealed class DiskAssetIndex : IAssetIndex
             }
 
             Promote(staging);
+            _cachedEntries = cached.ToArray();
         }
         catch
         {
@@ -94,50 +99,123 @@ public sealed class DiskAssetIndex : IAssetIndex
     public async Task<AssetIndexPage> QueryAsync(AssetIndexQuery query, CancellationToken cancellationToken = default)
     {
         query = query.Normalize();
-        var metadata = await ReadMetadataAsync(cancellationToken);
-        if (query.SortField != AssetSortField.IndexOrder)
-        {
-            return await ReadSortedPageAsync(query, cancellationToken);
-        }
-        return query.SearchText is null && query.TypeName is null && query.ContainerPath is null
-            ? await ReadDirectPageAsync(query, metadata.EntryCount, cancellationToken)
-            : await ReadFilteredPageAsync(query, cancellationToken);
-    }
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
 
-    private async Task<AssetIndexPage> ReadSortedPageAsync(
-        AssetIndexQuery query,
-        CancellationToken cancellationToken)
-    {
-        var desiredComparer = new AssetEntryComparer(query.SortField, query.SortDescending);
-        var queue = new PriorityQueue<AssetIndexEntry, AssetIndexEntry>(
-            new ReversedComparer<AssetIndexEntry>(desiredComparer));
-        var keep = query.Offset > int.MaxValue - query.Limit - 1
-            ? int.MaxValue
-            : query.Offset + query.Limit + 1;
-        long total = 0;
-        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        var typeName = query.TypeName;
+        var containerPath = query.ContainerPath;
+        var searchText = query.SearchText;
+        var isNoContainer = containerPath == "(No Container)";
+        var normQuery = containerPath is not null && !isNoContainer
+            ? containerPath.Replace('\\', '/').Trim('/')
+            : null;
+        var normQuerySlash = normQuery is not null ? normQuery + "/" : null;
+        var exactContainer = query.ExactContainer;
+
+        bool Filter(AssetIndexEntry entry)
         {
-            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
-            if (!Matches(entry, query))
+            if (typeName is not null && !entry.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                return false;
             }
-            total++;
-            queue.Enqueue(entry, entry);
-            if (queue.Count > keep)
+            if (containerPath is not null)
             {
-                queue.Dequeue();
+                if (isNoContainer)
+                {
+                    if (!string.IsNullOrEmpty(entry.Container))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(entry.Container))
+                    {
+                        return false;
+                    }
+                    var normEntry = entry.Container.Replace('\\', '/').Trim('/');
+                    if (exactContainer)
+                    {
+                        if (!normEntry.Equals(normQuery, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (!normEntry.Equals(normQuery, StringComparison.OrdinalIgnoreCase) &&
+                            !normEntry.StartsWith(normQuerySlash!, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+                    }
+                }
             }
+            if (searchText is not null)
+            {
+                if (!entry.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) &&
+                    !(entry.Container?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
-        var ordered = queue.UnorderedItems
-            .Select(item => item.Element)
-            .Order(desiredComparer)
-            .ToArray();
-        var items = ordered.Skip(query.Offset).Take(query.Limit).ToArray();
-        var next = query.Offset + items.Length < total ? query.Offset + items.Length : (int?)null;
-        return new AssetIndexPage(items, query.Offset, next, total);
+        var hasFilter = typeName is not null || containerPath is not null || searchText is not null;
+
+        if (query.SortField == AssetSortField.IndexOrder)
+        {
+            if (!hasFilter)
+            {
+                var total = allEntries.Length;
+                if (query.Offset >= total)
+                {
+                    return new AssetIndexPage([], query.Offset, null, total);
+                }
+                var count = Math.Min(query.Limit, total - query.Offset);
+                var items = new AssetIndexEntry[count];
+                Array.Copy(allEntries, query.Offset, items, 0, count);
+                int? next = query.Offset + count < total ? query.Offset + count : null;
+                return new AssetIndexPage(items, query.Offset, next, total);
+            }
+            else
+            {
+                var items = new List<AssetIndexEntry>(Math.Min(query.Limit, 250));
+                var matched = 0;
+                for (var i = 0; i < allEntries.Length; i++)
+                {
+                    var entry = allEntries[i];
+                    if (!Filter(entry)) continue;
+
+                    if (matched >= query.Offset && items.Count < query.Limit)
+                    {
+                        items.Add(entry);
+                    }
+                    matched++;
+                }
+                int? next = query.Offset + items.Count < matched ? query.Offset + items.Count : null;
+                return new AssetIndexPage(items, query.Offset, next, matched);
+            }
+        }
+        else
+        {
+            var matchedList = new List<AssetIndexEntry>();
+            for (var i = 0; i < allEntries.Length; i++)
+            {
+                var entry = allEntries[i];
+                if (Filter(entry))
+                {
+                    matchedList.Add(entry);
+                }
+            }
+            var comparer = new AssetEntryComparer(query.SortField, query.SortDescending);
+            matchedList.Sort(comparer);
+
+            var total = matchedList.Count;
+            var paged = matchedList.Skip(query.Offset).Take(query.Limit).ToArray();
+            int? next = query.Offset + paged.Length < total ? query.Offset + paged.Length : null;
+            return new AssetIndexPage(paged, query.Offset, next, total);
+        }
     }
 
     public async Task<IReadOnlyList<string>> ResolveObjectSourcesAsync(
@@ -153,11 +231,11 @@ public sealed class DiskAssetIndex : IAssetIndex
             return [];
         }
 
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
         var sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        for (var i = 0; i < allEntries.Length; i++)
         {
-            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
+            var entry = allEntries[i];
             if (names.Contains(Path.GetFileName(entry.SerializedFile)))
             {
                 sources.Add(entry.ObjectSourcePath);
@@ -179,15 +257,17 @@ public sealed class DiskAssetIndex : IAssetIndex
         bool exactContainer = false,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
         var query = new AssetIndexQuery(
             SearchText: searchText,
             TypeName: typeName,
             ContainerPath: containerPath,
             ExactContainer: exactContainer).Normalize();
-        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+
+        for (var i = 0; i < allEntries.Length; i++)
         {
-            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
+            cancellationToken.ThrowIfCancellationRequested();
+            var entry = allEntries[i];
             if (Matches(entry, query))
             {
                 yield return entry;
@@ -198,73 +278,85 @@ public sealed class DiskAssetIndex : IAssetIndex
     public async Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
         CancellationToken cancellationToken = default)
     {
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
         var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        await foreach (var entry in EnumerateAsync(cancellationToken: cancellationToken))
+        for (var i = 0; i < allEntries.Length; i++)
         {
-            counts.TryGetValue(entry.TypeName, out var count);
-            counts[entry.TypeName] = count + 1;
+            var type = allEntries[i].TypeName;
+            counts.TryGetValue(type, out var count);
+            counts[type] = count + 1;
         }
         return counts;
     }
 
     public void Rebuild()
     {
+        _cachedEntries = null;
         if (System.IO.Directory.Exists(_indexRoot))
         {
             System.IO.Directory.Delete(_indexRoot, true);
         }
     }
 
-    private async Task<AssetIndexPage> ReadDirectPageAsync(AssetIndexQuery query, long total, CancellationToken cancellationToken)
+    private async Task<AssetIndexEntry[]> EnsureLoadedAsync(CancellationToken cancellationToken)
     {
-        if (query.Offset >= total)
+        if (_cachedEntries is { } existing)
         {
-            return new AssetIndexPage([], query.Offset, null, total);
+            return existing;
         }
 
-        await using var offsets = File.OpenRead(Path.Combine(_indexRoot, OffsetsFileName));
-        offsets.Position = query.Offset * sizeof(long);
-        var bytes = new byte[sizeof(long)];
-        await offsets.ReadExactlyAsync(bytes, cancellationToken);
-        var rowOffset = BitConverter.ToInt64(bytes);
-
-        using var rows = new FileStream(Path.Combine(_indexRoot, RowsFileName), FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, true);
-        rows.Position = rowOffset;
-        using var reader = new StreamReader(rows, Encoding.UTF8, false, 64 * 1024, leaveOpen: false);
-        var items = new List<AssetIndexEntry>(query.Limit);
-        while (items.Count < query.Limit && await reader.ReadLineAsync(cancellationToken) is { } line)
+        await _cacheLock.WaitAsync(cancellationToken);
+        try
         {
-            items.Add(JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!);
+            if (_cachedEntries is { } lockedExisting)
+            {
+                return lockedExisting;
+            }
+
+            var rowsPath = Path.Combine(_indexRoot, RowsFileName);
+            if (!File.Exists(rowsPath))
+            {
+                return [];
+            }
+
+            var list = new List<AssetIndexEntry>();
+            var stringPool = new Dictionary<string, string>(StringComparer.Ordinal);
+            string Intern(string s)
+            {
+                if (stringPool.TryGetValue(s, out var pooled)) return pooled;
+                stringPool[s] = s;
+                return s;
+            }
+
+            using var stream = new FileStream(rowsPath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, true);
+            using var reader = new StreamReader(stream, Encoding.UTF8, false, 128 * 1024);
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                var raw = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions);
+                if (raw is not null)
+                {
+                    var entry = raw with
+                    {
+                        TypeName = Intern(raw.TypeName),
+                        SourcePath = Intern(raw.SourcePath),
+                        ObjectSourcePath = Intern(raw.ObjectSourcePath),
+                        SerializedFile = Intern(raw.SerializedFile),
+                        GameObjectSerializedFile = raw.GameObjectSerializedFile is not null ? Intern(raw.GameObjectSerializedFile) : null,
+                        ParentTransformSerializedFile = raw.ParentTransformSerializedFile is not null ? Intern(raw.ParentTransformSerializedFile) : null
+                    };
+                    list.Add(entry);
+                }
+            }
+
+            var result = list.ToArray();
+            _cachedEntries = result;
+            return result;
         }
-
-        int? next = query.Offset + items.Count < total ? query.Offset + items.Count : null;
-        return new AssetIndexPage(items, query.Offset, next, total);
-    }
-
-    private async Task<AssetIndexPage> ReadFilteredPageAsync(AssetIndexQuery query, CancellationToken cancellationToken)
-    {
-        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
-        var items = new List<AssetIndexEntry>(query.Limit);
-        var matched = 0;
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        finally
         {
-            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
-            if (!Matches(entry, query))
-            {
-                continue;
-            }
-            if (matched++ < query.Offset)
-            {
-                continue;
-            }
-            if (items.Count < query.Limit)
-            {
-                items.Add(entry);
-                continue;
-            }
-            return new AssetIndexPage(items, query.Offset, query.Offset + items.Count, null);
+            _cacheLock.Release();
         }
-        return new AssetIndexPage(items, query.Offset, null, query.Offset + items.Count);
     }
 
     private static bool Matches(AssetIndexEntry entry, AssetIndexQuery query)
