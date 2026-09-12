@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -476,9 +476,6 @@ namespace AssetStudio
                             var compressedSize = (int)blockInfo.compressedSize;
                             var uncompressedSize = (int)blockInfo.uncompressedSize;
 
-                            sharedCompressedBuff.AsSpan().Clear();
-                            sharedUncompressedBuff.AsSpan().Clear();
-
                             var read = reader.Read(sharedCompressedBuff, 0, compressedSize);
                             debugMsg += $"(read: {read.ToString().ColorIf(read != compressedSize, ColorConsole.BrightRed)})";
                             var compressedSpan = new ReadOnlySpan<byte>(sharedCompressedBuff, 0, compressedSize);
@@ -510,10 +507,10 @@ namespace AssetStudio
             finally
             {
                 if (sharedCompressedBuff != null)
-                    BigArrayPool<byte>.Shared.Return(sharedCompressedBuff, clearArray: true);
+                    BigArrayPool<byte>.Shared.Return(sharedCompressedBuff, clearArray: false);
                 
                 if (sharedUncompressedBuff != null)
-                    BigArrayPool<byte>.Shared.Return(sharedUncompressedBuff, clearArray: true);
+                    BigArrayPool<byte>.Shared.Return(sharedUncompressedBuff, clearArray: false);
             }
 
             return blocksStream;

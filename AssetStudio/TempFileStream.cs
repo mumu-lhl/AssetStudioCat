@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace AssetStudio
@@ -8,7 +8,7 @@ namespace AssetStudio
         private readonly string _tempFilePath;
         private bool _disposed;
 
-        public TempFileStream(string path, FileMode fileMode, FileAccess fileAccess = FileAccess.ReadWrite, FileShare fileShare = FileShare.Read, int bufferSize = 4096)
+        public TempFileStream(string path, FileMode fileMode, FileAccess fileAccess = FileAccess.ReadWrite, FileShare fileShare = FileShare.Read, int bufferSize = 64 * 1024)
             : base(path, fileMode, fileAccess, fileShare, bufferSize, FileOptions.DeleteOnClose)
         {
             _tempFilePath = path;

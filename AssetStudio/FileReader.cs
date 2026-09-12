@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 
 namespace AssetStudio
@@ -15,7 +15,6 @@ namespace AssetStudio
         private static readonly byte[] zipSpannedMagic = { 0x50, 0x4B, 0x07, 0x08 };
         private static readonly byte[] unityFsMagic = {0x55, 0x6E, 0x69, 0x74, 0x79, 0x46, 0x53, 0x00};
         private static readonly int headerBuffLen = 1152;
-        private static byte[] headerBuff = new byte[headerBuffLen];
 
         public FileReader(string path) : this(path, File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) { }
 
@@ -28,10 +27,13 @@ namespace AssetStudio
 
         private FileType CheckFileType()
         {
-            var buff = headerBuff.AsSpan();
-            buff.Clear();
-            var dataLen = Read(headerBuff, 0, headerBuffLen);
-            Position = 0;
+            var headerBuff = System.Buffers.ArrayPool<byte>.Shared.Rent(headerBuffLen);
+            try
+            {
+                var buff = headerBuff.AsSpan(0, headerBuffLen);
+                buff.Clear();
+                var dataLen = BaseStream.Read(buff);
+                Position = 0;
 
             var signature = buff.ReadStringToNull(20);
             switch (signature)
@@ -79,6 +81,11 @@ namespace AssetStudio
 
                     return FileType.ResourceFile;
                 }
+            }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(headerBuff);
             }
         }
 

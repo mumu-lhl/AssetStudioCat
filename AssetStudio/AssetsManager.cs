@@ -82,6 +82,38 @@ namespace AssetStudio
             SetAssetFilter(classIDTypeList.ToArray());
         }
 
+        public static List<string> ResolveFilePaths(IEnumerable<string> paths)
+        {
+            var fileList = new List<string>();
+            var filesInPath = false;
+            var parentPath = "";
+            foreach (var path in paths)
+            {
+                var fullPath = Path.GetFullPath(path);
+                if (Directory.Exists(fullPath))
+                {
+                    var parent = Directory.GetParent(fullPath)?.FullName;
+                    if (!filesInPath && (parentPath == "" || parentPath?.Length > parent?.Length))
+                    {
+                        parentPath = parent;
+                    }
+                    ImportHelper.MergeSplitAssets(fullPath, true);
+                    fileList.AddRange(Directory.GetFiles(fullPath, "*.*", SearchOption.AllDirectories));
+                }
+                else if (File.Exists(fullPath))
+                {
+                    parentPath = Path.GetDirectoryName(fullPath);
+                    fileList.Add(fullPath);
+                    filesInPath = true;
+                }
+            }
+            if (filesInPath && !string.IsNullOrEmpty(parentPath))
+            {
+                ImportHelper.MergeSplitAssets(parentPath);
+            }
+            return ImportHelper.ProcessingSplitFiles(fileList).ToList();
+        }
+
         public void LoadFilesAndFolders(params string[] paths)
         {
             LoadFilesAndFolders(out _, paths.ToList());

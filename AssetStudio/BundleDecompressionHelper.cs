@@ -1,4 +1,4 @@
-﻿using BundleCompression.Lzma;
+using BundleCompression.Lzma;
 using BundleCompression.Oodle;
 using System;
 using System.IO;
@@ -10,7 +10,9 @@ namespace AssetStudio
 {
     public static class BundleDecompressionHelper
     {
-        private static readonly Decompressor ZstdDecompressor = new Decompressor();
+        [ThreadStatic]
+        private static Decompressor t_zstdDecompressor;
+        private static Decompressor ZstdDecompressor => t_zstdDecompressor ??= new Decompressor();
         private static readonly string MsgPattern = @"\. ";
 
         public static MemoryStream DecompressLzmaStream(MemoryStream inStream)

@@ -62,15 +62,34 @@ public sealed class AssetIndexBuilder
         }
 
         index.Rebuild();
-        var estimatedExpandedBytes = SaturatingMultiply(fingerprint.TotalBytes, 3);
-        using var session = DecompressionSession.Create(_settings, _cacheLayout, estimatedExpandedBytes);
-        using var managerScope = new AssetsManagerScope();
-        managerScope.Manager.MetadataOnly = true;
-        managerScope.Manager.Options.CustomUnityVersion = string.IsNullOrWhiteSpace(_settings.CustomUnityVersion)
-            ? null
-            : new UnityVersion(_settings.CustomUnityVersion);
-        session.ApplyTo(managerScope.Manager.Options.BundleOptions);
+
+        var resolvedFiles = await Task.Run(() => AssetsManager.ResolveFilePaths(sourcePaths), cancellationToken);
+        if (resolvedFiles.Count == 0)
+        {
+            await index.BuildAsync(
+                fingerprint,
+                EmptyEntries(),
+                cancellationToken);
+            return new AssetIndexBuildResult(
+                index,
+                fingerprint,
+                false,
+                0,
+                new DecompressionModeSummary("Empty", "No source files found."));
+        }
+
+        var availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        if (availableMemory <= 0) availableMemory = 4L * 1024 * 1024 * 1024;
+        var fractionBudget = (long)(availableMemory * _settings.AutoMemoryFraction);
+        var memoryBudget = Math.Min(_settings.AutoMemoryLimitBytes, fractionBudget);
+
+        var batches = CreateFileBatches(resolvedFiles, memoryBudget);
+
         var previousProgress = Progress.Default;
+        var modeSummary = BundleDecompressionMode.Memory;
+        var summaryReason = "In-memory streaming decompression.";
+        long totalCount = 0;
+
         try
         {
             if (progress is not null)
@@ -78,12 +97,19 @@ public sealed class AssetIndexBuilder
                 Progress.Default = progress;
             }
 
-            await Task.Run(
-                () => managerScope.Manager.LoadFilesAndFolders(sourcePaths.ToArray()),
+            var entries = EnumerateAllBatchedEntries(
+                batches,
+                fingerprint.IndexKey,
+                availableMemory,
+                progress,
+                mode => modeSummary = mode,
+                reason => summaryReason = reason,
+                count => totalCount = count,
                 cancellationToken);
+
             await index.BuildAsync(
                 fingerprint,
-                EnumerateEntries(managerScope.Manager, fingerprint.IndexKey, cancellationToken),
+                entries,
                 cancellationToken);
         }
         finally
@@ -91,106 +117,201 @@ public sealed class AssetIndexBuilder
             Progress.Default = previousProgress;
         }
 
-        var count = managerScope.Manager.AssetsFileList.Sum(file => (long)file.m_Objects.Count);
         return new AssetIndexBuildResult(
             index,
             fingerprint,
             false,
-            count,
-            new DecompressionModeSummary(session.Decision.EffectiveMode.ToString(), session.Decision.Reason));
+            totalCount,
+            new DecompressionModeSummary(modeSummary.ToString(), summaryReason));
     }
 
-    private static async IAsyncEnumerable<AssetIndexEntry> EnumerateEntries(
-        AssetsManager manager,
+    private static async IAsyncEnumerable<AssetIndexEntry> EmptyEntries()
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static List<List<string>> CreateFileBatches(List<string> files, long memoryBudget)
+    {
+        var targetBatchBytes = Math.Clamp(memoryBudget / 3, 128L * 1024 * 1024, 512L * 1024 * 1024);
+        var batches = new List<List<string>>();
+        var currentBatch = new List<string>();
+        long currentBatchEstimatedBytes = 0;
+
+        foreach (var file in files)
+        {
+            long fileSize = 0;
+            try
+            {
+                fileSize = new FileInfo(file).Length;
+            }
+            catch
+            {
+                // ignored
+            }
+
+            var expandedEstimate = SaturatingMultiply(fileSize, 3);
+            if (currentBatch.Count > 0 && (currentBatchEstimatedBytes + expandedEstimate > targetBatchBytes || currentBatch.Count >= 50))
+            {
+                batches.Add(currentBatch);
+                currentBatch = new List<string>();
+                currentBatchEstimatedBytes = 0;
+            }
+
+            currentBatch.Add(file);
+            currentBatchEstimatedBytes += expandedEstimate;
+        }
+
+        if (currentBatch.Count > 0)
+        {
+            batches.Add(currentBatch);
+        }
+
+        return batches;
+    }
+
+    private async IAsyncEnumerable<AssetIndexEntry> EnumerateAllBatchedEntries(
+        List<List<string>> batches,
         string sourceRoot,
+        long availableMemory,
+        IProgress<int>? progress,
+        Action<BundleDecompressionMode> reportMode,
+        Action<string> reportReason,
+        Action<long> reportCount,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var containers = BuildContainerMap(manager);
+        var containers = new Dictionary<ObjectReference, string>();
         long id = 0;
-        foreach (var file in manager.AssetsFileList)
-        {
-            foreach (var location in file.m_Objects)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var classIdType = (ClassIDType)location.classID;
-                string? name = null;
-                long? gameObjectPathId = null;
-                string? gameObjectSerializedFile = null;
-                long? parentTransformPathId = null;
-                string? parentTransformSerializedFile = null;
 
+        for (var batchIndex = 0; batchIndex < batches.Count; batchIndex++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var batch = batches[batchIndex];
+
+            long batchExpandedBytes = 0;
+            foreach (var f in batch)
+            {
                 try
                 {
-                    if (classIdType is ClassIDType.Transform or ClassIDType.RectTransform)
-                    {
-                        var reader = new ObjectReader(file.reader, file, location);
-                        var transform = new Transform(reader);
-                        gameObjectPathId = transform.m_GameObject.m_PathID;
-                        gameObjectSerializedFile = ResolveReferencedFile(file, transform.m_GameObject.m_FileID);
-                        if (!transform.m_Father.IsNull)
-                        {
-                            parentTransformPathId = transform.m_Father.m_PathID;
-                            parentTransformSerializedFile = ResolveReferencedFile(file, transform.m_Father.m_FileID);
-                        }
-                    }
-                    else if (classIdType == ClassIDType.GameObject)
-                    {
-                        var reader = new ObjectReader(file.reader, file, location);
-                        var go = new GameObject(reader);
-                        name = go.m_Name;
-                    }
-                    else if (classIdType == ClassIDType.MonoBehaviour)
-                    {
-                        var reader = new ObjectReader(file.reader, file, location);
-                        var mb = new MonoBehaviour(reader);
-                        name = mb.m_Name;
-                    }
-                    else if (classIdType == ClassIDType.AssetBundle)
-                    {
-                        var reader = new ObjectReader(file.reader, file, location);
-                        var ab = new AssetBundle(reader);
-                        name = string.IsNullOrEmpty(ab.m_AssetBundleName) ? ab.m_Name : ab.m_AssetBundleName;
-                    }
-                    else if (IsNamedObjectClass(classIdType))
-                    {
-                        var reader = new ObjectReader(file.reader, file, location);
-                        var named = new NamedObject(reader);
-                        name = named.m_Name;
-                    }
+                    batchExpandedBytes += SaturatingMultiply(new FileInfo(f).Length, 3);
                 }
-                catch (Exception exception)
+                catch
                 {
-                    Logger.Warning($"Unable to index {file.fileName} PathID {location.m_PathID}: {exception.Message}");
-                }
-
-                if (string.IsNullOrEmpty(name))
-                {
-                    name = $"{classIdType} #{location.m_PathID}";
-                }
-
-                yield return new AssetIndexEntry(
-                    id++,
-                    sourceRoot,
-                    file.originalPath ?? file.fullName,
-                    file.fullName,
-                    location.m_PathID,
-                    location.classID,
-                    classIdType.ToString(),
-                    name,
-                    containers.GetValueOrDefault(new ObjectReference(file.fullName, location.m_PathID)),
-                    location.byteStart,
-                    location.byteSize,
-                    gameObjectPathId,
-                    gameObjectSerializedFile,
-                    parentTransformPathId,
-                    parentTransformSerializedFile);
-
-                if ((id & 511) == 0)
-                {
-                    await Task.Yield();
+                    // ignored
                 }
             }
+
+            using var session = DecompressionSession.Create(_settings, _cacheLayout, batchExpandedBytes, availableMemory);
+            if (session.Decision.EffectiveMode == BundleDecompressionMode.Disk)
+            {
+                reportMode(BundleDecompressionMode.Disk);
+                reportReason(session.Decision.Reason);
+            }
+
+            using var managerScope = new AssetsManagerScope();
+            managerScope.Manager.MetadataOnly = true;
+            managerScope.Manager.Options.CustomUnityVersion = string.IsNullOrWhiteSpace(_settings.CustomUnityVersion)
+                ? null
+                : new UnityVersion(_settings.CustomUnityVersion);
+            session.ApplyTo(managerScope.Manager.Options.BundleOptions);
+
+            await Task.Run(() => managerScope.Manager.LoadFilesAndFolders(batch.ToArray()), cancellationToken);
+
+            BuildContainerMap(managerScope.Manager, containers);
+
+            foreach (var file in managerScope.Manager.AssetsFileList)
+            {
+                foreach (var location in file.m_Objects)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var classIdType = (ClassIDType)location.classID;
+                    string? name = null;
+                    long? gameObjectPathId = null;
+                    string? gameObjectSerializedFile = null;
+                    long? parentTransformPathId = null;
+                    string? parentTransformSerializedFile = null;
+
+                    try
+                    {
+                        if (classIdType is ClassIDType.Transform or ClassIDType.RectTransform)
+                        {
+                            var reader = new ObjectReader(file.reader, file, location);
+                            var transform = new Transform(reader);
+                            gameObjectPathId = transform.m_GameObject.m_PathID;
+                            gameObjectSerializedFile = ResolveReferencedFile(file, transform.m_GameObject.m_FileID);
+                            if (!transform.m_Father.IsNull)
+                            {
+                                parentTransformPathId = transform.m_Father.m_PathID;
+                                parentTransformSerializedFile = ResolveReferencedFile(file, transform.m_Father.m_FileID);
+                            }
+                        }
+                        else if (classIdType == ClassIDType.GameObject)
+                        {
+                            var reader = new ObjectReader(file.reader, file, location);
+                            var go = new GameObject(reader);
+                            name = go.m_Name;
+                        }
+                        else if (classIdType == ClassIDType.MonoBehaviour)
+                        {
+                            var reader = new ObjectReader(file.reader, file, location);
+                            var mb = new MonoBehaviour(reader);
+                            name = mb.m_Name;
+                        }
+                        else if (classIdType == ClassIDType.AssetBundle)
+                        {
+                            var reader = new ObjectReader(file.reader, file, location);
+                            var ab = new AssetBundle(reader);
+                            name = string.IsNullOrEmpty(ab.m_AssetBundleName) ? ab.m_Name : ab.m_AssetBundleName;
+                        }
+                        else if (IsNamedObjectClass(classIdType))
+                        {
+                            var reader = new ObjectReader(file.reader, file, location);
+                            var named = new NamedObject(reader);
+                            name = named.m_Name;
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        Logger.Warning($"Unable to index {file.fileName} PathID {location.m_PathID}: {exception.Message}");
+                    }
+
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        name = $"{classIdType} #{location.m_PathID}";
+                    }
+
+                    yield return new AssetIndexEntry(
+                        id++,
+                        sourceRoot,
+                        file.originalPath ?? file.fullName,
+                        file.fullName,
+                        location.m_PathID,
+                        location.classID,
+                        classIdType.ToString(),
+                        name,
+                        containers.GetValueOrDefault(new ObjectReference(file.fullName, location.m_PathID)),
+                        location.byteStart,
+                        location.byteSize,
+                        gameObjectPathId,
+                        gameObjectSerializedFile,
+                        parentTransformPathId,
+                        parentTransformSerializedFile);
+
+                    if ((id & 511) == 0)
+                    {
+                        await Task.Yield();
+                    }
+                }
+            }
+
+            if (batches.Count > 1 && progress != null)
+            {
+                var percent = (int)((batchIndex + 1) * 100.0 / batches.Count);
+                progress.Report(percent);
+            }
         }
+
+        reportCount(id);
     }
 
     private static bool IsNamedObjectClass(ClassIDType type) => type switch
@@ -218,9 +339,8 @@ public sealed class AssetIndexBuilder
         _ => false
     };
 
-    private static Dictionary<ObjectReference, string> BuildContainerMap(AssetsManager manager)
+    private static void BuildContainerMap(AssetsManager manager, Dictionary<ObjectReference, string> containers)
     {
-        var containers = new Dictionary<ObjectReference, string>();
         foreach (var file in manager.AssetsFileList)
         {
             foreach (var location in file.m_Objects.Where(info =>
@@ -261,7 +381,6 @@ public sealed class AssetIndexBuilder
                 }
             }
         }
-        return containers;
     }
 
     private static void AddContainer(

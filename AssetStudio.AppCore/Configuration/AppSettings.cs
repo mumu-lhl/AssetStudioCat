@@ -16,9 +16,9 @@ public sealed class AppSettings
 
     public int PreviewCacheMegabytes { get; set; } = 128;
 
-    public double AutoMemoryFraction { get; set; } = 0.30;
+    public double AutoMemoryFraction { get; set; } = 0.50;
 
-    public long AutoMemoryLimitBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+    public long AutoMemoryLimitBytes { get; set; } = 4L * 1024 * 1024 * 1024;
 
     public ConvertedImageFormat ConvertedImageFormat { get; set; } = ConvertedImageFormat.Png;
 
@@ -54,7 +54,7 @@ public sealed class AppSettings
         AutoMemoryLimitBytes = Math.Clamp(
             AutoMemoryLimitBytes,
             128L * 1024 * 1024,
-            int.MaxValue);
+            64L * 1024 * 1024 * 1024);
         FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
         Language = string.Equals(Language, "zh-CN", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Language, "zh", StringComparison.OrdinalIgnoreCase)
