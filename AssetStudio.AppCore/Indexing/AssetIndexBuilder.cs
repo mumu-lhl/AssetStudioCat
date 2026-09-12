@@ -66,6 +66,9 @@ public sealed class AssetIndexBuilder
         using var session = DecompressionSession.Create(_settings, _cacheLayout, estimatedExpandedBytes);
         using var managerScope = new AssetsManagerScope();
         managerScope.Manager.MetadataOnly = true;
+        managerScope.Manager.Options.CustomUnityVersion = string.IsNullOrWhiteSpace(_settings.CustomUnityVersion)
+            ? null
+            : new UnityVersion(_settings.CustomUnityVersion);
         session.ApplyTo(managerScope.Manager.Options.BundleOptions);
         var previousProgress = Progress.Default;
         try

@@ -17,6 +17,7 @@ public sealed class AppSettingsStoreTests : IDisposable
         {
             DecompressionMode = BundleDecompressionMode.Disk,
             DecompressionDirectory = Path.Combine(_root, "hdd-cache"),
+            CustomUnityVersion = "2019.4.40f1",
             PreviewCacheMegabytes = 192,
             ConvertedImageFormat = ConvertedImageFormat.Webp,
             FbxScaleFactor = 0.01,
@@ -29,6 +30,7 @@ public sealed class AppSettingsStoreTests : IDisposable
 
         Assert.Equal(BundleDecompressionMode.Disk, loaded.DecompressionMode);
         Assert.Equal(Path.GetFullPath(settings.DecompressionDirectory), loaded.DecompressionDirectory);
+        Assert.Equal("2019.4.40f1", loaded.CustomUnityVersion);
         Assert.Equal(192, loaded.PreviewCacheMegabytes);
         Assert.Equal(ConvertedImageFormat.Webp, loaded.ConvertedImageFormat);
         Assert.Equal(0.01, loaded.FbxScaleFactor);

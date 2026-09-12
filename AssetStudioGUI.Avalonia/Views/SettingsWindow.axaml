@@ -36,6 +36,12 @@
           <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse…" Click="BrowseCacheRoot" />
         </Grid>
 
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Override Unity version (optional)" />
+        <TextBox Text="{Binding CustomUnityVersion}" PlaceholderText="Example: 2019.4.40f1" />
+        <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                   Text="Use only when the game version is stripped or detected incorrectly. Rebuild the index after changing this value."
+                   TextWrapping="Wrap" />
+
         <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Preview cache limit (MB)" />
         <NumericUpDown Minimum="32" Maximum="4096" Increment="32" Value="{Binding PreviewCacheMegabytes}" />
         <CheckBox Content="Restore the most recent source at startup" IsChecked="{Binding RestoreLastSource}" />

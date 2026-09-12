@@ -15,6 +15,7 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedMode = settings.DecompressionMode;
         DecompressionDirectory = settings.DecompressionDirectory ?? string.Empty;
         CacheRoot = settings.CacheRoot ?? string.Empty;
+        CustomUnityVersion = settings.CustomUnityVersion ?? string.Empty;
         PreviewCacheMegabytes = settings.PreviewCacheMegabytes;
         SelectedImageFormat = settings.ConvertedImageFormat;
         ExportSpriteWithMask = settings.ExportSpriteWithMask;
@@ -42,6 +43,9 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string CacheRoot { get; set; }
+
+    [ObservableProperty]
+    public partial string CustomUnityVersion { get; set; }
 
     [ObservableProperty]
     public partial int PreviewCacheMegabytes { get; set; }
@@ -86,6 +90,7 @@ public partial class SettingsViewModel : ViewModelBase
         _settings.DecompressionMode = SelectedMode;
         _settings.DecompressionDirectory = DecompressionDirectory;
         _settings.CacheRoot = CacheRoot;
+        _settings.CustomUnityVersion = CustomUnityVersion;
         _settings.PreviewCacheMegabytes = PreviewCacheMegabytes;
         _settings.ConvertedImageFormat = SelectedImageFormat;
         _settings.ExportSpriteWithMask = ExportSpriteWithMask;

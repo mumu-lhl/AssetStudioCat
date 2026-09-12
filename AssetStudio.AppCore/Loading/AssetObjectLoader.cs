@@ -33,6 +33,9 @@ public sealed class AssetObjectLoader
             : long.MaxValue;
         var decompression = DecompressionSession.Create(_settings, _cacheLayout, estimatedExpandedBytes);
         var manager = new AssetsManager { MetadataOnly = true };
+        manager.Options.CustomUnityVersion = string.IsNullOrWhiteSpace(_settings.CustomUnityVersion)
+            ? null
+            : new UnityVersion(_settings.CustomUnityVersion);
         if (materializeAnimatorGraph)
         {
             var rootType = Enum.IsDefined(typeof(ClassIDType), entry.ClassId)

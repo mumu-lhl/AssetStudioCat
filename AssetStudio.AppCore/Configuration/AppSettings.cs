@@ -12,6 +12,8 @@ public sealed class AppSettings
 
     public string? DecompressionDirectory { get; set; }
 
+    public string? CustomUnityVersion { get; set; }
+
     public int PreviewCacheMegabytes { get; set; } = 128;
 
     public double AutoMemoryFraction { get; set; } = 0.30;
@@ -62,6 +64,7 @@ public sealed class AppSettings
         DecompressionDirectory = NormalizePath(
             DecompressionDirectory,
             Path.Combine(CacheRoot, "decompressed"));
+        CustomUnityVersion = string.IsNullOrWhiteSpace(CustomUnityVersion) ? null : CustomUnityVersion.Trim();
         return this;
     }
 
