@@ -113,6 +113,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ExtractOpenedSources(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a directory for extracted Bundle files",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExtractOpenedSourcesAsync(path);
+        }
+    }
+
     private async void FilterKeyUp(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && DataContext is MainViewModel viewModel)

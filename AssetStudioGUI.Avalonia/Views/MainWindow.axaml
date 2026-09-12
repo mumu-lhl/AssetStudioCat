@@ -21,6 +21,7 @@
         <MenuItem Header="Open folder…" Click="OpenFolder" />
         <MenuItem Header="Open most recent" IsEnabled="{Binding CanOpenRecent}" Click="OpenMostRecent" />
         <Separator />
+        <MenuItem Header="Extract opened Bundles…" IsEnabled="{Binding HasSource}" Click="ExtractOpenedSources" />
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
       <MenuItem Header="_Export" IsEnabled="{Binding HasSource}">
@@ -174,6 +175,7 @@
         <StackPanel Grid.Column="2" Margin="0,0,8,0" Orientation="Horizontal" Spacing="6">
           <Button Padding="10,2" Content="Cancel load" IsVisible="{Binding IsBusy}" Click="CancelLoad" />
           <Button Padding="10,2" Content="Cancel export" IsVisible="{Binding IsBatchExportBusy}" Click="CancelExport" />
+          <Button Padding="10,2" Content="Cancel extraction" IsVisible="{Binding IsExtractionBusy}" Click="CancelExport" />
         </StackPanel>
         <ProgressBar Grid.Column="3" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
       </Grid>

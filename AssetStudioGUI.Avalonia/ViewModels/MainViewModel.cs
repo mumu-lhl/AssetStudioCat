@@ -25,6 +25,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private GameObjectExportService? _gameObjectExportService;
     private ConvertedAssetExportService? _convertedExportService;
     private BatchExportService? _batchExportService;
+    private BundleExtractionService? _bundleExtractionService;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private CancellationTokenSource? _exportCancellation;
@@ -145,6 +146,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial bool IsBatchExportBusy { get; set; }
 
     [ObservableProperty]
+    public partial bool IsExtractionBusy { get; set; }
+
+    [ObservableProperty]
     public partial bool IsHierarchyBusy { get; set; }
 
     [ObservableProperty]
@@ -218,6 +222,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _gameObjectExportService = new GameObjectExportService(new AssetObjectLoader(settings, layout), settings);
             _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings);
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
+            _bundleExtractionService = new BundleExtractionService(settings, layout);
             var typeCounts = await _currentIndex.GetTypeCountsAsync(cancellationToken);
             AssetTypes.Clear();
             AssetClasses.Clear();
@@ -615,6 +620,40 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     public void CancelExport() => _exportCancellation?.Cancel();
+
+    public async Task ExtractOpenedSourcesAsync(string outputDirectory)
+    {
+        if (_bundleExtractionService is null || _sourcePaths.Count == 0 || IsExtractionBusy)
+        {
+            return;
+        }
+        _exportCancellation?.Dispose();
+        _exportCancellation = new CancellationTokenSource();
+        var token = _exportCancellation.Token;
+        IsExtractionBusy = true;
+        StatusText = "Extracting Bundle files…";
+        try
+        {
+            var progress = new Progress<BundleExtractionProgress>(value =>
+            {
+                StatusText = $"Extracted {value.ExtractedFiles:N0} files — {value.CompletedSources:N0}/{value.TotalSources:N0}: {Path.GetFileName(value.SourcePath)}";
+            });
+            var count = await _bundleExtractionService.ExtractAsync(_sourcePaths, outputDirectory, progress, token);
+            StatusText = $"Bundle extraction complete: {count:N0} files";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Bundle extraction cancelled";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Bundle extraction failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExtractionBusy = false;
+        }
+    }
 
     private async Task ExportSelectedAsync(string outputPath, bool dump)
     {

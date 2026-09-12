@@ -99,6 +99,7 @@ session files.
 - The asset list reads at most one 250-row page. Search/type filtering streams the index; non-index sorting retains only the requested page plus its offset in a bounded priority queue.
 - Selecting a row reopens its owning bundle only when preview, dump, converted export, raw export, or FBX export needs the real Unity object; preview data is held in a byte-bounded cache.
 - Audio preview displays metadata. **Play in system player** exports only that clip into the cache's playback directory and asks Windows, macOS, or Linux to open it with the default player.
+- **Extract opened Bundles** is the explicit, persistent decompression workflow. It preserves each bundle's internal path below a `*_unpacked` directory and never overwrites an existing extracted file.
 - Loading and rebuilding have cancellation; a newer filter/sort query cancels its predecessor so stale results cannot replace the current page.
 
 Commits are made at the end of these coherent slices rather than per file.
