@@ -21,8 +21,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private AssetExportService? _exportService;
     private AnimatorExportService? _animatorExportService;
     private ConvertedAssetExportService? _convertedExportService;
+    private BatchExportService? _batchExportService;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
+    private CancellationTokenSource? _exportCancellation;
+    private readonly List<AssetRowViewModel> _selectedAssets = [];
     private string? _sourcePath;
     private int _pageOffset;
 
@@ -41,6 +44,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<AssetRowViewModel> Assets { get; } = [];
 
+    public ObservableCollection<string> AssetTypes { get; } = ["All types"];
+
     public AppSettings Settings { get; }
 
     public bool HasSource => _sourcePath is not null;
@@ -57,6 +62,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string SelectedType { get; set; } = "All types";
 
     public string DecompressionSummary => Settings.DecompressionMode switch
     {
@@ -103,11 +111,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
     public partial bool IsExportBusy { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsBatchExportBusy { get; set; }
+
     public bool HasSelectedAsset => SelectedAsset is not null;
 
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
 
     public bool CanExportAnimator => CanExport && SelectedAsset?.Type == "Animator";
+
+    public bool HasBatchSelection => _selectedAssets.Count > 0;
+
+    public int SelectedAssetCount => _selectedAssets.Count;
 
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
@@ -136,6 +151,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout));
             _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout));
+            _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
+            var typeCounts = await _currentIndex.GetTypeCountsAsync();
+            AssetTypes.Clear();
+            AssetTypes.Add("All types");
+            foreach (var typeName in typeCounts.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+            {
+                AssetTypes.Add(typeName);
+            }
+            SelectedType = "All types";
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -232,6 +256,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public void SetSelectedAssets(IEnumerable<AssetRowViewModel> rows)
+    {
+        _selectedAssets.Clear();
+        _selectedAssets.AddRange(rows);
+        OnPropertyChanged(nameof(HasBatchSelection));
+        OnPropertyChanged(nameof(SelectedAssetCount));
+    }
+
     public async Task LoadSelectedDumpAsync()
     {
         if (SelectedAsset is null || _inspectionService is null || IsDumpBusy)
@@ -322,6 +354,60 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public async Task ExportBatchAsync(string outputDirectory, BatchExportMode mode, bool selectedOnly)
+    {
+        if (_batchExportService is null || _currentIndex is null || IsExportBusy)
+        {
+            return;
+        }
+
+        var selectedSnapshot = _selectedAssets.Select(row => row.IndexEntry).ToArray();
+        if (selectedOnly && selectedSnapshot.Length == 0)
+        {
+            return;
+        }
+
+        _exportCancellation?.Dispose();
+        _exportCancellation = new CancellationTokenSource();
+        var cancellationToken = _exportCancellation.Token;
+        var entries = selectedOnly
+            ? BatchExportService.FromEntries(selectedSnapshot, cancellationToken)
+            : _currentIndex.EnumerateAsync(
+                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                SelectedType == "All types" ? null : SelectedType,
+                cancellationToken);
+        IsExportBusy = true;
+        IsBatchExportBusy = true;
+        StatusText = selectedOnly ? "Exporting selected assets…" : "Exporting filtered assets…";
+        var progress = new Progress<BatchExportProgress>(value =>
+        {
+            StatusText = $"Exported {value.Completed}: {value.Succeeded} succeeded, {value.Failed} failed — {value.AssetName}";
+        });
+        try
+        {
+            var result = await _batchExportService.ExportAsync(
+                entries,
+                outputDirectory,
+                mode,
+                progress,
+                cancellationToken);
+            StatusText = result.Failed == 0
+                ? $"Batch export complete: {result.Succeeded} succeeded"
+                : $"Batch export complete: {result.Succeeded} succeeded, {result.Failed} failed; see {result.ErrorLogPath}";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Batch export cancelled";
+        }
+        finally
+        {
+            IsBatchExportBusy = false;
+            IsExportBusy = false;
+        }
+    }
+
+    public void CancelExport() => _exportCancellation?.Cancel();
+
     private async Task ExportSelectedAsync(string outputPath, bool dump)
     {
         if (SelectedAsset is null || _exportService is null || IsExportBusy)
@@ -355,7 +441,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var page = await _currentIndex.QueryAsync(new AssetIndexQuery(offset, PageSize, SearchText));
+        var page = await _currentIndex.QueryAsync(new AssetIndexQuery(
+            offset,
+            PageSize,
+            string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+            SelectedType == "All types" ? null : SelectedType));
         Assets.Clear();
         foreach (var entry in page.Items)
         {
@@ -391,6 +481,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _previewCancellation?.Dispose();
         _dumpCancellation?.Cancel();
         _dumpCancellation?.Dispose();
+        _exportCancellation?.Cancel();
+        _exportCancellation?.Dispose();
         PreviewImage?.Dispose();
     }
 

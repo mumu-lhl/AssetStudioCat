@@ -74,6 +74,25 @@ public sealed class DiskAssetIndexTests : IDisposable
         Assert.Equal("/source/bundle-shared", sourcePath);
     }
 
+    [Fact]
+    public async Task EnumeratesFilteredRowsAndCountsTypes()
+    {
+        var source = CreateSourceDirectory();
+        var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
+        await index.BuildAsync(AssetSourceFingerprint.Create(source), Entries(20));
+
+        var filtered = new List<AssetIndexEntry>();
+        await foreach (var entry in index.EnumerateAsync("group-1", "TextAsset"))
+        {
+            filtered.Add(entry);
+        }
+        var counts = await index.GetTypeCountsAsync();
+
+        Assert.All(filtered, entry => Assert.Equal("TextAsset", entry.TypeName));
+        Assert.Equal(10, counts["Texture2D"]);
+        Assert.Equal(10, counts["TextAsset"]);
+    }
+
     private string CreateSourceDirectory()
     {
         var source = Path.Combine(_root, "source");

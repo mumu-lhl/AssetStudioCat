@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -123,6 +124,35 @@ public sealed class DiskAssetIndex : IAssetIndex
             }
         }
         return sources.ToArray();
+    }
+
+    public async IAsyncEnumerable<AssetIndexEntry> EnumerateAsync(
+        string? searchText = null,
+        string? typeName = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var query = new AssetIndexQuery(SearchText: searchText, TypeName: typeName).Normalize();
+        using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions)!;
+            if (Matches(entry, query))
+            {
+                yield return entry;
+            }
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        await foreach (var entry in EnumerateAsync(cancellationToken: cancellationToken))
+        {
+            counts.TryGetValue(entry.TypeName, out var count);
+            counts[entry.TypeName] = count + 1;
+        }
+        return counts;
     }
 
     public void Rebuild()

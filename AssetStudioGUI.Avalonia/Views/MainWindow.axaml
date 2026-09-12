@@ -22,21 +22,35 @@
         <Separator />
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
-      <MenuItem Header="_Export" IsEnabled="{Binding HasSelectedAsset}">
+      <MenuItem Header="_Export" IsEnabled="{Binding HasSource}">
         <MenuItem Header="Export converted…" IsEnabled="{Binding CanExport}" Click="ExportConverted" />
         <MenuItem Header="Export raw…" IsEnabled="{Binding CanExport}" Click="ExportRaw" />
         <MenuItem Header="Export complete dump…" IsEnabled="{Binding CanExport}" Click="ExportDump" />
         <Separator />
         <MenuItem Header="Export Animator as FBX…" IsEnabled="{Binding CanExportAnimator}" Click="ExportAnimator" />
+        <Separator />
+        <MenuItem Header="Batch converted">
+          <MenuItem Header="Selected objects…" IsEnabled="{Binding HasBatchSelection}" Click="BatchConvertedSelected" />
+          <MenuItem Header="Filtered objects…" IsEnabled="{Binding HasSource}" Click="BatchConvertedFiltered" />
+        </MenuItem>
+        <MenuItem Header="Batch raw">
+          <MenuItem Header="Selected objects…" IsEnabled="{Binding HasBatchSelection}" Click="BatchRawSelected" />
+          <MenuItem Header="Filtered objects…" IsEnabled="{Binding HasSource}" Click="BatchRawFiltered" />
+        </MenuItem>
+        <MenuItem Header="Batch dump">
+          <MenuItem Header="Selected objects…" IsEnabled="{Binding HasBatchSelection}" Click="BatchDumpSelected" />
+          <MenuItem Header="Filtered objects…" IsEnabled="{Binding HasSource}" Click="BatchDumpFiltered" />
+        </MenuItem>
       </MenuItem>
       <MenuItem Header="_Settings" Click="OpenSettings" />
     </Menu>
 
     <Border Grid.Row="1" Padding="10,8" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,Auto,*,260">
+      <Grid ColumnDefinitions="Auto,Auto,*,180,260">
         <Button Grid.Column="0" Margin="0,0,8,0" Content="Open files" IsEnabled="False" />
         <Button Grid.Column="1" Margin="0,0,12,0" Content="Open folder" Click="OpenFolder" />
-        <TextBox Grid.Column="3" PlaceholderText="Filter by name or container" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />
+        <ComboBox Grid.Column="3" Margin="0,0,8,0" ItemsSource="{Binding AssetTypes}" SelectedItem="{Binding SelectedType}" SelectionChanged="TypeFilterChanged" />
+        <TextBox Grid.Column="4" PlaceholderText="Filter by name or container" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />
       </Grid>
     </Border>
 
@@ -62,7 +76,7 @@
             <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Size" />
           </Grid>
         </Border>
-        <ListBox Grid.Row="1" ItemsSource="{Binding Assets}" SelectionChanged="AssetSelectionChanged">
+        <ListBox Grid.Row="1" ItemsSource="{Binding Assets}" SelectionMode="Multiple" SelectionChanged="AssetSelectionChanged">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:AssetRowViewModel">
               <Grid Margin="4,3" ColumnDefinitions="2*,2*,110,100,100">
@@ -115,10 +129,11 @@
     </Grid>
 
     <Border Grid.Row="3" Padding="10,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,Auto,220">
+      <Grid ColumnDefinitions="*,Auto,Auto,220">
         <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="{Binding StatusText}" />
         <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource ThemeForegroundLowBrush}" Text="{Binding DecompressionSummary}" />
-        <ProgressBar Grid.Column="2" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
+        <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2" Content="Cancel export" IsVisible="{Binding IsBatchExportBusy}" Click="CancelExport" />
+        <ProgressBar Grid.Column="3" Height="12" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsBusy}" />
       </Grid>
     </Border>
   </Grid>

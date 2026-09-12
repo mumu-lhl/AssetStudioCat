@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using AssetStudio.AppCore.Configuration;
+using AssetStudio.AppCore.Exporting;
 using AssetStudioGUI.Avalonia.ViewModels;
 
 namespace AssetStudioGUI.Avalonia.Views;
@@ -92,7 +93,18 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel viewModel && sender is ListBox listBox)
         {
-            await viewModel.SelectAssetAsync(listBox.SelectedItem as AssetRowViewModel);
+            viewModel.SetSelectedAssets(listBox.SelectedItems?.OfType<AssetRowViewModel>() ?? []);
+            var active = e.AddedItems.OfType<AssetRowViewModel>().LastOrDefault()
+                ?? listBox.SelectedItems?.OfType<AssetRowViewModel>().LastOrDefault();
+            await viewModel.SelectAssetAsync(active);
+        }
+    }
+
+    private async void TypeFilterChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel { IsBusy: false } viewModel)
+        {
+            await viewModel.ApplyFilterAsync();
         }
     }
 
@@ -185,6 +197,38 @@ public partial class MainWindow : Window
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(safe) ? "asset" : safe;
+    }
+
+    private async Task BatchExport(BatchExportMode mode, bool selectedOnly)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = $"Choose a directory for batch {mode.ToString().ToLowerInvariant()} export",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportBatchAsync(path, mode, selectedOnly);
+        }
+    }
+
+    private async void BatchConvertedSelected(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Converted, true);
+    private async void BatchConvertedFiltered(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Converted, false);
+    private async void BatchRawSelected(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Raw, true);
+    private async void BatchRawFiltered(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Raw, false);
+    private async void BatchDumpSelected(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Dump, true);
+    private async void BatchDumpFiltered(object? sender, RoutedEventArgs e) => await BatchExport(BatchExportMode.Dump, false);
+
+    private void CancelExport(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.CancelExport();
+        }
     }
 
     protected override void OnClosed(EventArgs e)
