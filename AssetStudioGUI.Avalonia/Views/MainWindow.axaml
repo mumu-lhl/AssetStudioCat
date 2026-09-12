@@ -69,12 +69,42 @@
           <CheckBox VerticalAlignment="Center" Content="{Binding L[Descending]}" IsChecked="{Binding SortDescending}" Click="SortDirectionChanged" />
         </StackPanel>
         <ComboBox Grid.Column="3" Margin="0,0,8,0" ItemsSource="{Binding AssetTypes}" SelectedItem="{Binding SelectedType}" SelectionChanged="TypeFilterChanged" />
-        <TextBox Grid.Column="4" PlaceholderText="{Binding L[FilterByName]}" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />
+        <TextBox Grid.Column="4" Classes="clearButton" PlaceholderText="{Binding L[FilterByName]}" Text="{Binding SearchText}" KeyUp="FilterKeyUp" />
       </Grid>
     </Border>
 
     <Grid Grid.Row="2" ColumnDefinitions="280,5,*,5,360">
       <TabControl Grid.Column="0">
+        <TabItem Header="{Binding L[ContainerDirectory]}">
+          <Grid RowDefinitions="Auto,*">
+            <StackPanel Grid.Row="0" Margin="8" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsContainerTreeBusy}">
+              <ProgressBar Width="80" IsIndeterminate="True" />
+              <TextBlock VerticalAlignment="Center" Text="{Binding L[BuildingContainerTree]}" Foreground="{DynamicResource ThemeForegroundLowBrush}" />
+            </StackPanel>
+            <TextBlock Grid.Row="1" Margin="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                       Text="{Binding L[NoIndexOpen]}"
+                       IsVisible="{Binding !HasSource}" />
+            <TreeView Grid.Row="1" Margin="4"
+                      ItemsSource="{Binding ContainerTreeRoots}"
+                      SelectionChanged="ContainerTreeSelectionChanged"
+                      IsVisible="{Binding HasSource}">
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate x:DataType="vm:ContainerTreeNodeViewModel" ItemsSource="{Binding Children}">
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                    <TextBlock Text="{Binding Icon}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontWeight="{Binding NameFontWeight}" VerticalAlignment="Center" />
+                    <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                               Text="{Binding Details}"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Margin="2,0,0,0" />
+                  </StackPanel>
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </Grid>
+        </TabItem>
         <TabItem Header="{Binding L[SceneHierarchy]}">
           <Grid RowDefinitions="Auto,*">
             <StackPanel Grid.Row="0" Margin="8" Orientation="Horizontal" Spacing="8">
@@ -109,8 +139,18 @@
 
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
 
-      <Grid Grid.Column="2" RowDefinitions="*,Auto">
-        <ScrollViewer Grid.Row="0"
+      <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto">
+        <!-- Container Filter Header Bar (shown when a container is selected) -->
+        <Border Grid.Row="0" Margin="8,6,8,2" Padding="8,4" Background="{DynamicResource ThemeControlMidBrush}" CornerRadius="4" IsVisible="{Binding HasContainerFilter}">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="📁 " />
+            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding SelectedContainerTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <Button Grid.Column="2" Padding="8,2" Content="{Binding L[ClearFilter]}" Click="ClearContainerFilter" />
+          </Grid>
+        </Border>
+
+        <!-- Resource Table View -->
+        <ScrollViewer Grid.Row="1"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Disabled">
           <Grid RowDefinitions="Auto,*">
@@ -227,7 +267,9 @@
             </ListBox>
           </Grid>
         </ScrollViewer>
-        <Border Grid.Row="1" Padding="8,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
+
+        <!-- Bottom bar -->
+        <Border Grid.Row="2" Padding="8,6" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,Auto,*">
             <Button Grid.Column="0" Margin="0,0,8,0" Content="{Binding L[Previous]}" IsEnabled="{Binding CanGoPrevious}" Click="PreviousPage" />
             <Button Grid.Column="1" Content="{Binding L[Next]}" IsEnabled="{Binding CanGoNext}" Click="NextPage" />

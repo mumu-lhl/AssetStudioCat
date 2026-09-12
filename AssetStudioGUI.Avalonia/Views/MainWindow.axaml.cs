@@ -337,6 +337,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ContainerTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && sender is TreeView treeView)
+        {
+            await viewModel.SelectContainerNodeAsync(treeView.SelectedItem as ContainerTreeNodeViewModel);
+        }
+    }
+
+    private async void ClearContainerFilter(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            await viewModel.ClearContainerFilterAsync();
+        }
+    }
+
     private static string MakeSafeFileName(string value)
     {
         var invalid = Path.GetInvalidFileNameChars();

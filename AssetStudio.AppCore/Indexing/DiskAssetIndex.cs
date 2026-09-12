@@ -99,7 +99,7 @@ public sealed class DiskAssetIndex : IAssetIndex
         {
             return await ReadSortedPageAsync(query, cancellationToken);
         }
-        return query.SearchText is null && query.TypeName is null
+        return query.SearchText is null && query.TypeName is null && query.ContainerPath is null
             ? await ReadDirectPageAsync(query, metadata.EntryCount, cancellationToken)
             : await ReadFilteredPageAsync(query, cancellationToken);
     }
@@ -166,12 +166,24 @@ public sealed class DiskAssetIndex : IAssetIndex
         return sources.ToArray();
     }
 
-    public async IAsyncEnumerable<AssetIndexEntry> EnumerateAsync(
+    public IAsyncEnumerable<AssetIndexEntry> EnumerateAsync(
         string? searchText = null,
         string? typeName = null,
+        CancellationToken cancellationToken = default) =>
+        EnumerateAsync(searchText, typeName, null, false, cancellationToken);
+
+    public async IAsyncEnumerable<AssetIndexEntry> EnumerateAsync(
+        string? searchText,
+        string? typeName,
+        string? containerPath,
+        bool exactContainer = false,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var query = new AssetIndexQuery(SearchText: searchText, TypeName: typeName).Normalize();
+        var query = new AssetIndexQuery(
+            SearchText: searchText,
+            TypeName: typeName,
+            ContainerPath: containerPath,
+            ExactContainer: exactContainer).Normalize();
         using var reader = new StreamReader(Path.Combine(_indexRoot, RowsFileName), Encoding.UTF8);
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
@@ -260,6 +272,40 @@ public sealed class DiskAssetIndex : IAssetIndex
         if (query.TypeName is not null && !entry.TypeName.Equals(query.TypeName, StringComparison.OrdinalIgnoreCase))
         {
             return false;
+        }
+        if (query.ContainerPath is not null)
+        {
+            if (query.ContainerPath == "(No Container)")
+            {
+                if (!string.IsNullOrEmpty(entry.Container))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(entry.Container))
+                {
+                    return false;
+                }
+                var normEntry = entry.Container.Replace('\\', '/').Trim('/');
+                var normQuery = query.ContainerPath.Replace('\\', '/').Trim('/');
+                if (query.ExactContainer)
+                {
+                    if (!normEntry.Equals(normQuery, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    if (!normEntry.Equals(normQuery, StringComparison.OrdinalIgnoreCase) &&
+                        !normEntry.StartsWith(normQuery + "/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+            }
         }
         return query.SearchText is null
             || entry.Name.Contains(query.SearchText, StringComparison.OrdinalIgnoreCase)

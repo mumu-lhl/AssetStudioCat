@@ -9,6 +9,7 @@ using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Preview;
 using AssetStudioGUI.Avalonia.Localization;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -37,10 +38,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _pageCancellation;
     private readonly List<AssetRowViewModel> _selectedAssets = [];
+    private IReadOnlyList<ContainerHierarchyNode>? _containerHierarchyRoots;
     private IReadOnlyList<string> _sourcePaths = [];
     private bool _openedAsFileSelection;
     private int _pageOffset;
     private int _pageGeneration;
+    private long _totalAssetCount;
 
     public MainViewModel()
         : this(CreateDefaultSettings(), AppDirectories.Detect())
@@ -79,6 +82,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<SceneNodeViewModel> SceneRoots { get; } = [];
 
+    public ObservableCollection<ContainerTreeNodeViewModel> ContainerTreeRoots { get; } = [];
+
     public IReadOnlyList<AssetSortField> SortFields { get; } = Enum.GetValues<AssetSortField>();
 
     public AppSettings Settings { get; }
@@ -97,11 +102,57 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         ? T("NoIndexOpen")
         : T("Rows", _pageOffset + 1, _pageOffset + Assets.Count);
 
+    public string ContainerTreeSummary => _currentIndex is null
+        ? T("NoIndexOpen")
+        : T("ContainerTreeSummary", _totalAssetCount);
+
+    [ObservableProperty]
+    public partial bool IsContainerTreeBusy { get; set; }
+
+    [ObservableProperty]
+    public partial ContainerTreeNodeViewModel? SelectedContainerNode { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasContainerFilter))]
+    public partial string? SelectedContainerPath { get; set; }
+
+    [ObservableProperty]
+    public partial string? SelectedContainerTitle { get; set; }
+
+    [ObservableProperty]
+    public partial bool SelectedContainerExact { get; set; }
+
+    public bool HasContainerFilter => !string.IsNullOrEmpty(SelectedContainerPath);
+
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
+    partial void OnSearchTextChanged(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) && !string.IsNullOrWhiteSpace(ActiveSearchText))
+        {
+            ActiveSearchText = string.Empty;
+            if (_currentIndex is not null && !IsBusy)
+            {
+                _ = ApplyFilterAsync();
+            }
+        }
+    }
+
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFlatViewMode))]
+    [NotifyPropertyChangedFor(nameof(IsDirectoryViewMode))]
+    public partial string ActiveSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFlatViewMode))]
+    [NotifyPropertyChangedFor(nameof(IsDirectoryViewMode))]
     public partial string SelectedType { get; set; } = string.Empty;
+
+    public bool IsFlatViewMode => !string.IsNullOrWhiteSpace(ActiveSearchText)
+        || (!string.IsNullOrEmpty(SelectedType) && SelectedType != _allTypesLabel);
+
+    public bool IsDirectoryViewMode => !IsFlatViewMode;
 
     [ObservableProperty]
     public partial AssetSortField SelectedSortField { get; set; } = AssetSortField.IndexOrder;
@@ -322,9 +373,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 AssetClasses.Add(new AssetClassRowViewModel(typeName, typeCounts[typeName]));
             }
             SceneRoots.Clear();
+            _containerHierarchyRoots = null;
+            ContainerTreeRoots.Clear();
+            SelectedContainerPath = null;
+            SelectedContainerTitle = null;
+            SelectedContainerExact = false;
+            SelectedContainerNode = null;
             SelectedType = _allTypesLabel;
+            ActiveSearchText = string.Empty;
+            _totalAssetCount = result.AssetCount;
             _pageOffset = 0;
             await LoadPageAsync(0, cancellationToken);
+            _ = BuildContainerTreeAsync(cancellationToken);
             await RememberSourceAsync(_sourcePaths, fileSelection, cancellationToken);
             StatusText = result.ReusedExistingIndex
                 ? T("OpenedCachedIndex", result.AssetCount)
@@ -379,6 +439,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public Task ApplyFilterAsync()
     {
+        ActiveSearchText = SearchText.Trim();
         _pageOffset = 0;
         return LoadPageAsync(0);
     }
@@ -493,6 +554,76 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             IsHierarchyBusy = false;
         }
+    }
+
+    public async Task BuildContainerTreeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_currentIndex is null || IsContainerTreeBusy)
+        {
+            return;
+        }
+
+        IsContainerTreeBusy = true;
+        try
+        {
+            var service = new ContainerHierarchyService();
+            _containerHierarchyRoots = await Task.Run(async () =>
+            {
+                return await service.BuildAsync(_currentIndex, cancellationToken);
+            }, cancellationToken);
+
+            ContainerTreeRoots.Clear();
+            foreach (var root in _containerHierarchyRoots)
+            {
+                ContainerTreeRoots.Add(ContainerTreeNodeViewModel.FromNode(root, _localizer));
+            }
+            OnPropertyChanged(nameof(ContainerTreeSummary));
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled
+        }
+        catch (Exception exception)
+        {
+            StatusText = T("HierarchyFailed", exception.Message);
+        }
+        finally
+        {
+            IsContainerTreeBusy = false;
+        }
+    }
+
+    public async Task SelectContainerNodeAsync(ContainerTreeNodeViewModel? node)
+    {
+        SelectedContainerNode = node;
+        if (node is null || string.IsNullOrEmpty(node.FullPath))
+        {
+            SelectedContainerPath = null;
+            SelectedContainerTitle = null;
+            SelectedContainerExact = false;
+        }
+        else if (node.FullPath == "(No Container)")
+        {
+            SelectedContainerPath = "(No Container)";
+            SelectedContainerTitle = _localizer["NoContainerGroup"];
+            SelectedContainerExact = true;
+        }
+        else
+        {
+            SelectedContainerPath = node.FullPath;
+            SelectedContainerTitle = node.Name;
+            SelectedContainerExact = !node.IsDirectory || node.Children.Count == 0;
+        }
+        await ApplyFilterAsync();
+    }
+
+    public async Task ClearContainerFilterAsync()
+    {
+        SelectedContainerPath = null;
+        SelectedContainerTitle = null;
+        SelectedContainerExact = false;
+        SelectedContainerNode = null;
+        await ApplyFilterAsync();
     }
 
     public async Task SelectAssetClassAsync(AssetClassRowViewModel? assetClass)
@@ -677,8 +808,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var entries = selectedOnly
             ? BatchExportService.FromEntries(selectedSnapshot, cancellationToken)
             : _currentIndex.EnumerateAsync(
-                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                string.IsNullOrWhiteSpace(ActiveSearchText) ? null : ActiveSearchText,
                 SelectedType == _allTypesLabel ? null : SelectedType,
+                SelectedContainerPath,
+                SelectedContainerExact,
                 cancellationToken);
         IsExportBusy = true;
         IsBatchExportBusy = true;
@@ -762,7 +895,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 _currentIndex,
                 outputPath,
                 format,
-                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                string.IsNullOrWhiteSpace(ActiveSearchText) ? null : ActiveSearchText,
                 SelectedType == _allTypesLabel ? null : SelectedType,
                 _exportCancellation.Token);
             StatusText = T("AssetListExported", count);
@@ -825,8 +958,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             page = await _currentIndex.QueryAsync(new AssetIndexQuery(
                 offset,
                 PageSize,
-                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                string.IsNullOrWhiteSpace(ActiveSearchText) ? null : ActiveSearchText,
                 SelectedType == _allTypesLabel ? null : SelectedType,
+                SelectedContainerPath,
+                SelectedContainerExact,
                 SelectedSortField,
                 SortDescending), token);
         }
@@ -904,11 +1039,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             SelectedType = _allTypesLabel;
         }
+        if (_containerHierarchyRoots is not null)
+        {
+            ContainerTreeRoots.Clear();
+            foreach (var root in _containerHierarchyRoots)
+            {
+                ContainerTreeRoots.Add(ContainerTreeNodeViewModel.FromNode(root, _localizer));
+            }
+        }
         OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(DecompressionSummary));
+        OnPropertyChanged(nameof(ContainerTreeSummary));
         OnPropertyChanged(nameof(MeshWireframeButtonText));
         OnPropertyChanged(nameof(MeshShadeButtonText));
         OnPropertyChanged(nameof(MeshNormalsButtonText));
+        OnPropertyChanged(nameof(IsFlatViewMode));
+        OnPropertyChanged(nameof(IsDirectoryViewMode));
     }
 
     private void NotifyNavigationChanged()
@@ -965,4 +1111,51 @@ public sealed record SceneNodeViewModel(
         localizer.Format("ScenePathId", node.GameObjectPathId),
         node.TransformEntry,
         node.Children.Select(child => FromNode(child, localizer)).ToArray());
+}
+
+public sealed record ContainerTreeNodeViewModel(
+    string Name,
+    string FullPath,
+    string Details,
+    string Icon,
+    bool IsDirectory,
+    int TotalAssetCount,
+    IReadOnlyList<ContainerTreeNodeViewModel> Children)
+{
+    public FontWeight NameFontWeight => IsDirectory ? FontWeight.SemiBold : FontWeight.Normal;
+
+    public static ContainerTreeNodeViewModel FromNode(ContainerHierarchyNode node, AppLocalizer localizer)
+    {
+        string icon;
+        string details = localizer.Format("ContainerItemCount", node.TotalAssetCount);
+        string name = node.Name;
+
+        if (name == "AllAssets")
+        {
+            name = localizer["AllAssets"];
+            icon = "🌐";
+        }
+        else if (name == "(No Container)")
+        {
+            name = localizer["NoContainerGroup"];
+            icon = "📁";
+        }
+        else if (node.IsDirectory && node.Children.Count > 0)
+        {
+            icon = "📁";
+        }
+        else
+        {
+            icon = "📦";
+        }
+
+        return new ContainerTreeNodeViewModel(
+            name,
+            node.FullPath,
+            details,
+            icon,
+            node.IsDirectory,
+            node.TotalAssetCount,
+            node.Children.Select(child => FromNode(child, localizer)).ToArray());
+    }
 }

@@ -5,6 +5,8 @@ public sealed record AssetIndexQuery(
     int Limit = 250,
     string? SearchText = null,
     string? TypeName = null,
+    string? ContainerPath = null,
+    bool ExactContainer = false,
     AssetSortField SortField = AssetSortField.IndexOrder,
     bool SortDescending = false)
 {
@@ -14,5 +16,6 @@ public sealed record AssetIndexQuery(
         Limit = Math.Clamp(Limit, 1, 2_000),
         SearchText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim(),
         TypeName = string.IsNullOrWhiteSpace(TypeName) ? null : TypeName.Trim(),
+        ContainerPath = string.IsNullOrWhiteSpace(ContainerPath) ? null : ContainerPath.Trim(),
     };
 }
