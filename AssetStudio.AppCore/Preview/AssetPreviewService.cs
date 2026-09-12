@@ -27,7 +27,7 @@ public sealed class AssetPreviewService
     }
 
     public bool Supports(string typeName) => typeName is
-        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "AudioClip" or "MonoScript";
+        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "AudioClip" or "MonoScript" or "MonoBehaviour";
 
     public async Task<AssetPreview> LoadAsync(
         AssetIndexEntry entry,
@@ -44,7 +44,7 @@ public sealed class AssetPreviewService
             return new AssetPreview(cached, null, DescribeBasic(entry, "Decoded preview cache"), true);
         }
 
-        var needsGraph = entry.TypeName == "Sprite";
+        var needsGraph = entry.TypeName is "Sprite" or "MonoBehaviour";
         using var session = await (needsGraph
             ? _objectLoader.OpenDependencyGraphAsync(entry, cancellationToken)
             : _objectLoader.OpenAsync(entry, cancellationToken));
@@ -59,6 +59,7 @@ public sealed class AssetPreviewService
             Shader shader => PreviewText(entry, shader.Convert()),
             AudioClip audio => PreviewAudio(entry, audio),
             MonoScript script => PreviewMonoScript(entry, script),
+            MonoBehaviour monoBehaviour => PreviewMonoBehaviour(entry, monoBehaviour),
             _ => throw new NotSupportedException($"Preview for {entry.TypeName} is not implemented."),
         };
         if (preview.PngData is not null)
@@ -120,6 +121,51 @@ public sealed class AssetPreviewService
             .AppendLine($"Stored size: {entry.ByteSize:N0} bytes")
             .ToString();
         return new AssetPreview(null, details, DescribeBasic(entry, "MonoScript metadata"));
+    }
+
+    private static AssetPreview PreviewMonoBehaviour(AssetIndexEntry entry, MonoBehaviour monoBehaviour)
+    {
+        var info = new StringBuilder();
+        info.AppendLine($"Name: {DisplayValue(entry.Name)}");
+        info.AppendLine($"Type: MonoBehaviour");
+
+        if (monoBehaviour.m_Script.TryGet(out var script))
+        {
+            var qualifiedName = string.IsNullOrWhiteSpace(script.m_Namespace)
+                ? script.m_ClassName
+                : $"{script.m_Namespace}.{script.m_ClassName}";
+            info.AppendLine($"Script: {DisplayValue(qualifiedName)}");
+            info.AppendLine($"Namespace: {DisplayValue(script.m_Namespace)}");
+            info.AppendLine($"Assembly: {DisplayValue(script.m_AssemblyName)}");
+        }
+        else
+        {
+            info.AppendLine("Script: (unresolved)");
+        }
+
+        info.AppendLine($"PathID: {entry.PathId}");
+        info.AppendLine($"Stored size: {entry.ByteSize:N0} bytes");
+
+        // Try to dump serialized fields via TypeTree, then fall back to JSON object dump.
+        var dumpText = monoBehaviour.Dump();
+        if (string.IsNullOrEmpty(dumpText))
+        {
+            dumpText = monoBehaviour.DumpObject();
+        }
+
+        if (!string.IsNullOrEmpty(dumpText))
+        {
+            var truncated = dumpText.Length > MaximumTextCharacters;
+            if (truncated)
+            {
+                dumpText = dumpText[..MaximumTextCharacters]
+                    + "\n\n[Preview truncated. Use dump export for the complete object.]";
+            }
+            return new AssetPreview(null, dumpText, info.ToString());
+        }
+
+        // No dump available – show metadata only.
+        return new AssetPreview(null, info.ToString(), DescribeBasic(entry, "MonoBehaviour metadata"));
     }
 
     private static string DisplayValue(string? value) => string.IsNullOrWhiteSpace(value) ? "(not available)" : value;
