@@ -23,6 +23,7 @@
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
       <MenuItem Header="_Export" IsEnabled="{Binding HasSelectedAsset}">
+        <MenuItem Header="Export converted…" IsEnabled="{Binding CanExport}" Click="ExportConverted" />
         <MenuItem Header="Export raw…" IsEnabled="{Binding CanExport}" Click="ExportRaw" />
         <MenuItem Header="Export complete dump…" IsEnabled="{Binding CanExport}" Click="ExportDump" />
         <Separator />

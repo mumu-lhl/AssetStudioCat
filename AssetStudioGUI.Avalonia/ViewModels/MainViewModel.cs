@@ -20,6 +20,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private AssetInspectionService? _inspectionService;
     private AssetExportService? _exportService;
     private AnimatorExportService? _animatorExportService;
+    private ConvertedAssetExportService? _convertedExportService;
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private string? _sourcePath;
@@ -134,6 +135,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout));
+            _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout));
             _pageOffset = 0;
             await LoadPageAsync(0);
             StatusText = result.ReusedExistingIndex
@@ -289,6 +291,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         catch (Exception exception)
         {
             StatusText = $"Animator export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
+
+    public async Task ExportSelectedConvertedAsync(string outputDirectory)
+    {
+        if (SelectedAsset is null || _convertedExportService is null || IsExportBusy)
+        {
+            return;
+        }
+
+        IsExportBusy = true;
+        StatusText = $"Converting {SelectedAsset.Type}…";
+        try
+        {
+            var result = await _convertedExportService.ExportAsync(SelectedAsset.IndexEntry, outputDirectory);
+            StatusText = result.Note ?? $"Converted asset exported ({result.Files.Count} files)";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Converted export failed: {exception.Message}";
         }
         finally
         {

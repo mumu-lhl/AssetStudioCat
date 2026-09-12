@@ -124,6 +124,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ExportConverted(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a directory for the converted asset",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedConvertedAsync(path);
+        }
+    }
+
     private async void ExportDump(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel { SelectedAsset: { } selected } viewModel)

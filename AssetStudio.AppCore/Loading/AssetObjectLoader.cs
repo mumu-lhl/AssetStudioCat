@@ -20,7 +20,7 @@ public sealed class AssetObjectLoader
         AssetIndexEntry entry,
         CancellationToken cancellationToken = default) => Task.Run(() => Open(entry, false, cancellationToken), cancellationToken);
 
-    public Task<AssetObjectSession> OpenAnimatorGraphAsync(
+    public Task<AssetObjectSession> OpenDependencyGraphAsync(
         AssetIndexEntry entry,
         CancellationToken cancellationToken = default) => Task.Run(() => Open(entry, true, cancellationToken), cancellationToken);
 
@@ -35,11 +35,14 @@ public sealed class AssetObjectLoader
         var manager = new AssetsManager { MetadataOnly = true };
         if (materializeAnimatorGraph)
         {
-            manager.SetAssetFilter(
-                ClassIDType.Animator,
-                ClassIDType.Mesh,
-                ClassIDType.Texture2D,
-                ClassIDType.Shader);
+            var rootType = Enum.IsDefined(typeof(ClassIDType), entry.ClassId)
+                ? (ClassIDType)entry.ClassId
+                : ClassIDType.Object;
+            manager.SetAssetFilter(rootType);
+            if (rootType == ClassIDType.Animator)
+            {
+                manager.SetAssetFilter(ClassIDType.Mesh, ClassIDType.Texture2D, ClassIDType.Shader);
+            }
         }
         decompression.ApplyTo(manager.Options.BundleOptions);
 
@@ -48,7 +51,7 @@ public sealed class AssetObjectLoader
             manager.LoadFilesAndFolders(entry.ObjectSourcePath);
             if (materializeAnimatorGraph)
             {
-                ResolveAndLoadAnimatorDependencies(manager, entry, cancellationToken);
+                ResolveAndLoadDependencies(manager, entry, cancellationToken);
                 manager.MaterializeLoadedAssets();
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -84,7 +87,7 @@ public sealed class AssetObjectLoader
         }
     }
 
-    private void ResolveAndLoadAnimatorDependencies(
+    private void ResolveAndLoadDependencies(
         AssetsManager manager,
         AssetIndexEntry entry,
         CancellationToken cancellationToken)

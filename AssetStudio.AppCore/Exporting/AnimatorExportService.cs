@@ -30,7 +30,7 @@ public sealed class AnimatorExportService
             throw new NotSupportedException("FBX export requires an Animator asset.");
         }
 
-        using var session = _objectLoader.OpenAnimatorGraphAsync(entry, cancellationToken).GetAwaiter().GetResult();
+        using var session = _objectLoader.OpenDependencyGraphAsync(entry, cancellationToken).GetAwaiter().GetResult();
         cancellationToken.ThrowIfCancellationRequested();
         if (session.Asset is not Animator animator)
         {
