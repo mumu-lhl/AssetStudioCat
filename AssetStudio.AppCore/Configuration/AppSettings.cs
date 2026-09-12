@@ -66,7 +66,7 @@ public sealed class AppSettings
         RecentSources = RecentSources
             .Where(source => source.Paths is { Count: > 0 })
             .OrderByDescending(source => source.LastOpenedAt)
-            .Take(10)
+            .Take(20)
             .ToList();
         CacheRoot = NormalizePath(CacheRoot, directories.DefaultCacheDirectory);
         DecompressionDirectory = NormalizePath(

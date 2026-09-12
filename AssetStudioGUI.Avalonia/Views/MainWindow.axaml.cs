@@ -24,10 +24,76 @@ public partial class MainWindow : Window
     {
         _settingsStore = settingsStore;
         _localizer = localizer;
+        _localizer.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "Item[]")
+            {
+                UpdateRecentMenu();
+            }
+        };
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is MainViewModel viewModel)
+            {
+                viewModel.RecentSourcesChanged -= UpdateRecentMenu;
+                viewModel.RecentSourcesChanged += UpdateRecentMenu;
+                UpdateRecentMenu();
+            }
+        };
         Opened += async (_, _) =>
         {
-            if (DataContext is MainViewModel viewModel) await viewModel.RestoreLastSourceAsync();
+            if (DataContext is MainViewModel viewModel)
+            {
+                viewModel.RecentSourcesChanged -= UpdateRecentMenu;
+                viewModel.RecentSourcesChanged += UpdateRecentMenu;
+                UpdateRecentMenu();
+                await viewModel.RestoreLastSourceAsync();
+            }
         };
+    }
+
+    private void UpdateRecentMenu()
+    {
+        RecentMenu.Items.Clear();
+        if (DataContext is not MainViewModel viewModel)
+        {
+            RecentMenu.IsEnabled = false;
+            return;
+        }
+
+        var recents = viewModel.Settings.RecentSources;
+        if (recents.Count == 0)
+        {
+            RecentMenu.IsEnabled = false;
+            return;
+        }
+
+        RecentMenu.IsEnabled = true;
+        foreach (var recent in recents)
+        {
+            var item = new MenuItem
+            {
+                Header = recent.DisplayName,
+                Tag = recent,
+            };
+            item.Click += async (_, _) =>
+            {
+                await viewModel.OpenRecentSourceAsync(recent);
+            };
+            RecentMenu.Items.Add(item);
+        }
+
+        RecentMenu.Items.Add(new Separator());
+
+        var clearItem = new MenuItem
+        {
+            Header = viewModel.L["ClearRecentList"],
+        };
+        clearItem.Click += async (_, _) =>
+        {
+            await viewModel.ClearRecentSourcesAsync();
+        };
+        RecentMenu.Items.Add(clearItem);
     }
 
     private async void OpenCacheManager(object? sender, RoutedEventArgs e)

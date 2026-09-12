@@ -418,14 +418,44 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         ? Task.CompletedTask
         : OpenSourcesAsync(_sourcePaths, _openedAsFileSelection, true);
 
+    public event Action? RecentSourcesChanged;
+
     public void CancelLoad() => _loadCancellation?.Cancel();
+
+    public async Task OpenRecentSourceAsync(RecentSource recent)
+    {
+        if (recent.Paths.Count == 0)
+        {
+            return;
+        }
+
+        var exists = recent.Paths.All(path => recent.IsFileSelection ? File.Exists(path) : Directory.Exists(path));
+        if (!exists)
+        {
+            StatusText = T("RecentSourceUnavailable");
+            return;
+        }
+
+        await OpenSourcesAsync(recent.Paths, recent.IsFileSelection, false);
+    }
+
+    public async Task ClearRecentSourcesAsync()
+    {
+        Settings.RecentSources.Clear();
+        if (_settingsStore is not null)
+        {
+            await _settingsStore.SaveAsync(Settings);
+        }
+        OnPropertyChanged(nameof(CanOpenRecent));
+        RecentSourcesChanged?.Invoke();
+    }
 
     public async Task OpenMostRecentAsync()
     {
         var recent = Settings.RecentSources.FirstOrDefault();
         if (recent is not null)
         {
-            await OpenSourcesAsync(recent.Paths, recent.IsFileSelection, false);
+            await OpenRecentSourceAsync(recent);
         }
     }
 
@@ -1036,12 +1066,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             item.IsFileSelection == fileSelection
             && item.Paths.SequenceEqual(normalized, StringComparer.OrdinalIgnoreCase));
         Settings.RecentSources.Insert(0, new RecentSource(normalized, fileSelection, DateTimeOffset.UtcNow));
-        if (Settings.RecentSources.Count > 10)
+        if (Settings.RecentSources.Count > 20)
         {
-            Settings.RecentSources.RemoveRange(10, Settings.RecentSources.Count - 10);
+            Settings.RecentSources.RemoveRange(20, Settings.RecentSources.Count - 20);
         }
         await _settingsStore.SaveAsync(Settings, cancellationToken);
         OnPropertyChanged(nameof(CanOpenRecent));
+        RecentSourcesChanged?.Invoke();
     }
 
     private string T(string key, params object?[] arguments) => arguments.Length == 0

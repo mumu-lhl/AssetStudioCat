@@ -26,7 +26,7 @@
       <MenuItem Header="{Binding L[File]}">
         <MenuItem Header="{Binding L[OpenFiles]}" Click="OpenFiles" />
         <MenuItem Header="{Binding L[OpenFolder]}" Click="OpenFolder" />
-        <MenuItem Header="{Binding L[OpenMostRecent]}" IsEnabled="{Binding CanOpenRecent}" Click="OpenMostRecent" />
+        <MenuItem Name="RecentMenu" Header="{Binding L[OpenRecent]}" />
         <Separator />
         <MenuItem Header="{Binding L[ExtractOpenedBundles]}" IsEnabled="{Binding HasSource}" Click="ExtractOpenedSources" />
         <MenuItem Header="{Binding L[RebuildIndex]}" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
