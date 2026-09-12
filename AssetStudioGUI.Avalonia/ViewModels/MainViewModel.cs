@@ -26,6 +26,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private ConvertedAssetExportService? _convertedExportService;
     private BatchExportService? _batchExportService;
     private BundleExtractionService? _bundleExtractionService;
+    private readonly AssetListExportService _assetListExportService = new();
     private CancellationTokenSource? _previewCancellation;
     private CancellationTokenSource? _dumpCancellation;
     private CancellationTokenSource? _exportCancellation;
@@ -652,6 +653,41 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         finally
         {
             IsExtractionBusy = false;
+        }
+    }
+
+    public async Task ExportAssetListAsync(string outputPath, AssetListExportFormat format)
+    {
+        if (_currentIndex is null || IsExportBusy)
+        {
+            return;
+        }
+        _exportCancellation?.Dispose();
+        _exportCancellation = new CancellationTokenSource();
+        IsExportBusy = true;
+        StatusText = "Writing filtered asset list…";
+        try
+        {
+            var count = await _assetListExportService.ExportAsync(
+                _currentIndex,
+                outputPath,
+                format,
+                string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
+                SelectedType == "All types" ? null : SelectedType,
+                _exportCancellation.Token);
+            StatusText = $"Asset list exported: {count:N0} rows";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Asset list export cancelled";
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Asset list export failed: {exception.Message}";
+        }
+        finally
+        {
+            IsExportBusy = false;
         }
     }
 

@@ -25,6 +25,9 @@
         <MenuItem Header="Rebuild index" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
       <MenuItem Header="_Export" IsEnabled="{Binding HasSource}">
+        <MenuItem Header="Export filtered asset list as CSV…" Click="ExportAssetListCsv" />
+        <MenuItem Header="Export filtered asset list as JSON…" Click="ExportAssetListJson" />
+        <Separator />
         <MenuItem Header="Export converted…" IsEnabled="{Binding CanExport}" Click="ExportConverted" />
         <MenuItem Header="Export raw…" IsEnabled="{Binding CanExport}" Click="ExportRaw" />
         <MenuItem Header="Export complete dump…" IsEnabled="{Binding CanExport}" Click="ExportDump" />

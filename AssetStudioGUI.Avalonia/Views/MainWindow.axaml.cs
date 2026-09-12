@@ -235,6 +235,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task ExportAssetList(AssetListExportFormat format)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        var extension = format == AssetListExportFormat.Csv ? "csv" : "json";
+        var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = $"Export filtered asset list as {extension.ToUpperInvariant()}",
+            SuggestedFileName = $"asset-list.{extension}",
+            DefaultExtension = extension,
+            FileTypeChoices = [new FilePickerFileType($"{extension.ToUpperInvariant()} file") { Patterns = [$"*.{extension}"] }],
+        });
+        if (output?.TryGetLocalPath() is { } path) await viewModel.ExportAssetListAsync(path, format);
+    }
+
+    private async void ExportAssetListCsv(object? sender, RoutedEventArgs e) => await ExportAssetList(AssetListExportFormat.Csv);
+
+    private async void ExportAssetListJson(object? sender, RoutedEventArgs e) => await ExportAssetList(AssetListExportFormat.Json);
+
     private async void ExportConverted(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
