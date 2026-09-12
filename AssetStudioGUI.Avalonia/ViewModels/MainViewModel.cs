@@ -16,7 +16,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private const int PageSize = 250;
     private readonly AppDirectories _directories;
     private DiskAssetIndex? _currentIndex;
-    private TexturePreviewService? _previewService;
+    private AssetPreviewService? _previewService;
     private AssetInspectionService? _inspectionService;
     private AssetExportService? _exportService;
     private AnimatorExportService? _animatorExportService;
@@ -91,7 +91,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial bool IsPreviewBusy { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviewImage))]
     public partial Bitmap? PreviewImage { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviewText))]
+    public partial string? PreviewText { get; set; }
 
     [ObservableProperty]
     public partial string PreviewMessage { get; set; } = "Select a Texture2D asset to preview it.";
@@ -123,6 +128,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial bool IsHierarchyBusy { get; set; }
 
     public bool HasSelectedAsset => SelectedAsset is not null;
+
+    public bool HasPreviewImage => PreviewImage is not null;
+
+    public bool HasPreviewText => !string.IsNullOrEmpty(PreviewText);
 
     public bool CanExport => HasSelectedAsset && !IsExportBusy;
 
@@ -168,9 +177,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _sourcePaths = sourcePaths.Select(Path.GetFullPath).ToArray();
             _openedAsFileSelection = fileSelection;
             _currentIndex = result.Index;
-            _previewService = new TexturePreviewService(
+            _previewService = new AssetPreviewService(
                 new AssetObjectLoader(settings, layout),
-                new MemoryPreviewCache(settings.PreviewCacheMegabytes));
+                new MemoryPreviewCache(settings.PreviewCacheMegabytes),
+                settings);
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout), settings);
@@ -235,6 +245,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         var previousImage = PreviewImage;
         PreviewImage = null;
+        PreviewText = null;
         previousImage?.Dispose();
         if (row is null)
         {
@@ -244,25 +255,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         AssetInformation = $"{row.Name}\n{row.Type}\nPathID: {row.PathId}\nStored size: {row.Size:N0} bytes";
-        if (!row.Type.Equals("Texture2D", StringComparison.Ordinal))
-        {
-            PreviewMessage = $"Preview for {row.Type} is not implemented yet.";
-            return;
-        }
         if (_previewService is null)
         {
             PreviewMessage = "The source index is not open.";
             return;
         }
+        if (!_previewService.Supports(row.Type))
+        {
+            PreviewMessage = $"Preview for {row.Type} is not implemented yet.";
+            return;
+        }
 
         IsPreviewBusy = true;
-        PreviewMessage = "Loading Texture2D from its source bundle…";
+        PreviewMessage = $"Loading {row.Type} from its source bundle…";
         try
         {
             var preview = await _previewService.LoadAsync(row.IndexEntry, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            using var stream = new MemoryStream(preview.PngData, writable: false);
-            PreviewImage = new Bitmap(stream);
+            if (preview.PngData is not null)
+            {
+                using var stream = new MemoryStream(preview.PngData, writable: false);
+                PreviewImage = new Bitmap(stream);
+            }
+            PreviewText = preview.Text;
             PreviewMessage = preview.FromCache ? "Decoded preview cache hit" : string.Empty;
             AssetInformation = preview.Information;
         }

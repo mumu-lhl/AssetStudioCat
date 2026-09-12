@@ -128,7 +128,11 @@
         <TabItem Header="Preview">
           <Grid RowDefinitions="*,Auto,Auto">
             <Border Grid.Row="0" Margin="8" Background="{DynamicResource ThemeBackgroundLowBrush}">
-              <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+              <Grid>
+                <Image Source="{Binding PreviewImage}" Stretch="Uniform" IsVisible="{Binding HasPreviewImage}" />
+                <TextBox Margin="8" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                         FontFamily="monospace" Text="{Binding PreviewText}" IsVisible="{Binding HasPreviewText}" />
+              </Grid>
             </Border>
             <TextBlock Grid.Row="1" Margin="12,6" HorizontalAlignment="Center"
                        Foreground="{DynamicResource ThemeForegroundLowBrush}"
