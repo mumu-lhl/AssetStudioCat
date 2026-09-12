@@ -22,6 +22,7 @@ public sealed class AppSettingsStoreTests : IDisposable
             ConvertedImageFormat = ConvertedImageFormat.Webp,
             FbxScaleFactor = 0.01,
             RestoreLastSource = false,
+            Language = "zh-CN",
             RecentSources = [new RecentSource(["/games/one"], false, DateTimeOffset.UtcNow)],
         };
 
@@ -35,6 +36,7 @@ public sealed class AppSettingsStoreTests : IDisposable
         Assert.Equal(ConvertedImageFormat.Webp, loaded.ConvertedImageFormat);
         Assert.Equal(0.01, loaded.FbxScaleFactor);
         Assert.False(loaded.RestoreLastSource);
+        Assert.Equal("zh-CN", loaded.Language);
         Assert.Single(loaded.RecentSources);
     }
 
@@ -51,6 +53,7 @@ public sealed class AppSettingsStoreTests : IDisposable
 
         Assert.Equal(BundleDecompressionMode.Auto, loaded.DecompressionMode);
         Assert.Equal(Path.GetFullPath(directories.DefaultCacheDirectory), loaded.CacheRoot);
+        Assert.Equal("auto", loaded.Language);
     }
 
     public void Dispose()

@@ -3,7 +3,7 @@
         xmlns:vm="using:AssetStudioGUI.Avalonia.ViewModels"
         x:Class="AssetStudioGUI.Avalonia.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
-        Title="Settings"
+        Title="{Binding L[SettingsTitle]}"
         Width="620"
         Height="680"
         MinWidth="520"
@@ -12,63 +12,66 @@
   <Grid Margin="20" RowDefinitions="*,Auto">
     <ScrollViewer Grid.Row="0">
       <StackPanel Spacing="10">
-        <TextBlock FontSize="20" FontWeight="SemiBold" Text="Loading and cache" />
+        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding L[LoadingAndCache]}" />
 
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Bundle decompression mode" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[Language]}" />
+        <ComboBox ItemsSource="{Binding Languages}" SelectedValue="{Binding SelectedLanguage}" SelectedValueBinding="{Binding Code}" />
+
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[BundleDecompressionMode]}" />
         <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
         <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
-                   Text="Automatic mode uses memory only when the estimated unpacked size fits the conservative memory budget."
+                   Text="{Binding L[AutomaticModeHelp]}"
                    TextWrapping="Wrap" />
 
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Decompression directory" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[DecompressionDirectory]}" />
         <Grid ColumnDefinitions="*,Auto">
           <TextBox Grid.Column="0" Text="{Binding DecompressionDirectory}" IsEnabled="{Binding IsDiskDirectoryEnabled}" />
-          <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse…" IsEnabled="{Binding IsDiskDirectoryEnabled}" Click="BrowseDecompressionDirectory" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Content="{Binding L[Browse]}" IsEnabled="{Binding IsDiskDirectoryEnabled}" Click="BrowseDecompressionDirectory" />
         </Grid>
 
         <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
-                   Text="Temporary decompressed files are isolated per session and removed on exit. The reusable asset index is stored separately below."
+                   Text="{Binding L[DecompressionDirectoryHelp]}"
                    TextWrapping="Wrap" />
 
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Persistent cache root" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[PersistentCacheRoot]}" />
         <Grid ColumnDefinitions="*,Auto">
           <TextBox Grid.Column="0" Text="{Binding CacheRoot}" />
-          <Button Grid.Column="1" Margin="8,0,0,0" Content="Browse…" Click="BrowseCacheRoot" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Content="{Binding L[Browse]}" Click="BrowseCacheRoot" />
         </Grid>
 
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Override Unity version (optional)" />
-        <TextBox Text="{Binding CustomUnityVersion}" PlaceholderText="Example: 2019.4.40f1" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[OverrideUnityVersion]}" />
+        <TextBox Text="{Binding CustomUnityVersion}" PlaceholderText="{Binding L[UnityVersionExample]}" />
         <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
-                   Text="Use only when the game version is stripped or detected incorrectly. Rebuild the index after changing this value."
+                   Text="{Binding L[UnityVersionHelp]}"
                    TextWrapping="Wrap" />
 
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Preview cache limit (MB)" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[PreviewCacheLimit]}" />
         <NumericUpDown Minimum="32" Maximum="4096" Increment="32" Value="{Binding PreviewCacheMegabytes}" />
-        <CheckBox Content="Restore the most recent source at startup" IsChecked="{Binding RestoreLastSource}" />
+        <CheckBox Content="{Binding L[RestoreLastSource]}" IsChecked="{Binding RestoreLastSource}" />
 
-        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="Converted export" />
-        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="Texture and Sprite image format" />
+        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="{Binding L[ConvertedExport]}" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[TextureSpriteFormat]}" />
         <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding SelectedImageFormat}" />
-        <CheckBox Content="Apply Sprite alpha mask" IsChecked="{Binding ExportSpriteWithMask}" />
-        <CheckBox Content="Convert supported AudioClips to WAV" IsChecked="{Binding ConvertAudioToWav}" />
+        <CheckBox Content="{Binding L[ApplySpriteMask]}" IsChecked="{Binding ExportSpriteWithMask}" />
+        <CheckBox Content="{Binding L[ConvertAudioToWav]}" IsChecked="{Binding ConvertAudioToWav}" />
 
-        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="FBX export" />
+        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="{Binding L[FbxExport]}" />
         <WrapPanel Orientation="Horizontal">
-          <CheckBox Margin="0,0,16,6" Content="Animations" IsChecked="{Binding FbxExportAnimations}" />
-          <CheckBox Margin="0,0,16,6" Content="Skins" IsChecked="{Binding FbxExportSkins}" />
-          <CheckBox Margin="0,0,16,6" Content="BlendShapes" IsChecked="{Binding FbxExportBlendShapes}" />
-          <CheckBox Margin="0,0,16,6" Content="All nodes" IsChecked="{Binding FbxExportAllNodes}" />
-          <CheckBox Margin="0,0,16,6" Content="Euler filter" IsChecked="{Binding FbxEulerFilter}" />
-          <CheckBox Margin="0,0,16,6" Content="ASCII FBX" IsChecked="{Binding FbxAscii}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[Animations]}" IsChecked="{Binding FbxExportAnimations}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[Skins]}" IsChecked="{Binding FbxExportSkins}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[BlendShapes]}" IsChecked="{Binding FbxExportBlendShapes}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[AllNodes]}" IsChecked="{Binding FbxExportAllNodes}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[EulerFilter]}" IsChecked="{Binding FbxEulerFilter}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[AsciiFbx]}" IsChecked="{Binding FbxAscii}" />
         </WrapPanel>
-        <TextBlock FontWeight="SemiBold" Text="FBX scale factor" />
+        <TextBlock FontWeight="SemiBold" Text="{Binding L[FbxScaleFactor]}" />
         <NumericUpDown Minimum="0.0001" Maximum="10000" Increment="0.1" Value="{Binding FbxScaleFactor}" />
       </StackPanel>
     </ScrollViewer>
 
     <StackPanel Grid.Row="1" Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-      <Button MinWidth="90" Content="Cancel" Click="Cancel" />
-      <Button MinWidth="90" Content="Save" Click="Save" />
+      <Button MinWidth="90" Content="{Binding L[Cancel]}" Click="Cancel" />
+      <Button MinWidth="90" Content="{Binding L[Save]}" Click="Save" />
     </StackPanel>
   </Grid>
 </Window>

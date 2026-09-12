@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Exporting;
+using AssetStudioGUI.Avalonia.Localization;
 using AssetStudioGUI.Avalonia.ViewModels;
 
 namespace AssetStudioGUI.Avalonia.Views;
@@ -11,16 +12,18 @@ namespace AssetStudioGUI.Avalonia.Views;
 public partial class MainWindow : Window
 {
     private readonly AppSettingsStore? _settingsStore;
+    private AppLocalizer _localizer = new();
 
     public MainWindow()
     {
         InitializeComponent();
     }
 
-    public MainWindow(AppSettingsStore settingsStore)
+    public MainWindow(AppSettingsStore settingsStore, AppLocalizer localizer)
         : this()
     {
         _settingsStore = settingsStore;
+        _localizer = localizer;
         Opened += async (_, _) =>
         {
             if (DataContext is MainViewModel viewModel) await viewModel.RestoreLastSourceAsync();
@@ -36,7 +39,7 @@ public partial class MainWindow : Window
         var layout = new AssetStudio.AppCore.Caching.CacheLayout(viewModel.Settings.Normalize(AppDirectories.Detect()));
         var window = new CacheManagerWindow
         {
-            DataContext = new CacheManagerViewModel(new AssetStudio.AppCore.Caching.CacheCatalog(layout)),
+            DataContext = new CacheManagerViewModel(new AssetStudio.AppCore.Caching.CacheCatalog(layout), _localizer),
         };
         await window.ShowDialog(this);
     }
@@ -58,12 +61,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = new SettingsWindow(viewModel.Settings, _settingsStore);
+        var window = new SettingsWindow(viewModel.Settings, _settingsStore, _localizer);
         var saved = await window.ShowDialog<bool>(this);
         if (saved)
         {
             viewModel.NotifySettingsChanged();
-            viewModel.StatusText = "Settings saved";
+            viewModel.StatusText = _localizer["SettingsSaved"];
         }
     }
 
@@ -76,7 +79,7 @@ public partial class MainWindow : Window
 
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Open AssetBundle directory",
+            Title = _localizer["OpenAssetBundleDirectory"],
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
@@ -94,9 +97,9 @@ public partial class MainWindow : Window
 
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Open AssetBundle or assets files",
+            Title = _localizer["OpenAssetFiles"],
             AllowMultiple = true,
-            FileTypeFilter = [new FilePickerFileType("Unity assets") { Patterns = ["*"] }],
+            FileTypeFilter = [new FilePickerFileType(_localizer["UnityAssets"]) { Patterns = ["*"] }],
         });
         var paths = files.Select(file => file.TryGetLocalPath()).Where(path => path is not null).Cast<string>().ToArray();
         if (paths.Length > 0)
@@ -118,7 +121,7 @@ public partial class MainWindow : Window
         if (DataContext is not MainViewModel viewModel) return;
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a directory for extracted Bundle files",
+            Title = _localizer["ChooseExtractionDirectory"],
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
@@ -224,10 +227,10 @@ public partial class MainWindow : Window
 
         var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Export raw asset",
+            Title = _localizer["ExportRawAsset"],
             SuggestedFileName = MakeSafeFileName(selected.Name) + ".dat",
             DefaultExtension = "dat",
-            FileTypeChoices = [new FilePickerFileType("Raw asset") { Patterns = ["*.dat"] }],
+            FileTypeChoices = [new FilePickerFileType(_localizer["RawAsset"]) { Patterns = ["*.dat"] }],
         });
         if (output?.TryGetLocalPath() is { } path)
         {
@@ -241,10 +244,10 @@ public partial class MainWindow : Window
         var extension = format == AssetListExportFormat.Csv ? "csv" : "json";
         var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = $"Export filtered asset list as {extension.ToUpperInvariant()}",
+            Title = _localizer.Format("ExportAssetList", extension.ToUpperInvariant()),
             SuggestedFileName = $"asset-list.{extension}",
             DefaultExtension = extension,
-            FileTypeChoices = [new FilePickerFileType($"{extension.ToUpperInvariant()} file") { Patterns = [$"*.{extension}"] }],
+            FileTypeChoices = [new FilePickerFileType($"{extension.ToUpperInvariant()} {_localizer["FileName"]}") { Patterns = [$"*.{extension}"] }],
         });
         if (output?.TryGetLocalPath() is { } path) await viewModel.ExportAssetListAsync(path, format);
     }
@@ -262,7 +265,7 @@ public partial class MainWindow : Window
 
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a directory for the converted asset",
+            Title = _localizer["ChooseConvertedDirectory"],
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
@@ -280,10 +283,10 @@ public partial class MainWindow : Window
 
         var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Export complete object dump",
+            Title = _localizer["ExportCompleteDump"],
             SuggestedFileName = MakeSafeFileName(selected.Name) + ".txt",
             DefaultExtension = "txt",
-            FileTypeChoices = [new FilePickerFileType("Text dump") { Patterns = ["*.txt"] }],
+            FileTypeChoices = [new FilePickerFileType(_localizer["TextDump"]) { Patterns = ["*.txt"] }],
         });
         if (output?.TryGetLocalPath() is { } path)
         {
@@ -300,7 +303,7 @@ public partial class MainWindow : Window
 
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a directory for the Animator FBX",
+            Title = _localizer["ChooseAnimatorDirectory"],
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
@@ -317,7 +320,7 @@ public partial class MainWindow : Window
         }
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a directory for the scene model FBX",
+            Title = _localizer["ChooseSceneDirectory"],
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
@@ -349,7 +352,7 @@ public partial class MainWindow : Window
         }
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = $"Choose a directory for batch {mode.ToString().ToLowerInvariant()} export",
+            Title = _localizer.Format("ChooseBatchDirectory", mode.ToString().ToLowerInvariant()),
             AllowMultiple = false,
         });
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)

@@ -2,7 +2,7 @@ namespace AssetStudio.AppCore.Configuration;
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -42,6 +42,8 @@ public sealed class AppSettings
 
     public bool RestoreLastSource { get; set; } = true;
 
+    public string Language { get; set; } = "auto";
+
     public List<RecentSource> RecentSources { get; set; } = [];
 
     public AppSettings Normalize(AppDirectories directories)
@@ -54,6 +56,12 @@ public sealed class AppSettings
             128L * 1024 * 1024,
             int.MaxValue);
         FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
+        Language = string.Equals(Language, "zh-CN", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Language, "zh", StringComparison.OrdinalIgnoreCase)
+            ? "zh-CN"
+            : string.Equals(Language, "en", StringComparison.OrdinalIgnoreCase)
+                ? "en"
+                : "auto";
         RecentSources ??= [];
         RecentSources = RecentSources
             .Where(source => source.Paths is { Count: > 0 })

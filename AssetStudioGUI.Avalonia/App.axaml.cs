@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AssetStudio.AppCore.Configuration;
+using AssetStudioGUI.Avalonia.Localization;
 using AssetStudioGUI.Avalonia.ViewModels;
 using AssetStudioGUI.Avalonia.Views;
 
@@ -21,9 +22,10 @@ public partial class App : Application
             var directories = AppDirectories.Detect();
             var settingsStore = new AppSettingsStore(directories);
             var settings = settingsStore.LoadAsync().GetAwaiter().GetResult();
-            desktop.MainWindow = new MainWindow(settingsStore)
+            var localizer = new AppLocalizer(settings.Language);
+            desktop.MainWindow = new MainWindow(settingsStore, localizer)
             {
-                DataContext = new MainViewModel(settings, directories, settingsStore),
+                DataContext = new MainViewModel(settings, directories, settingsStore, localizer),
             };
         }
 

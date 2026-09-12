@@ -1,4 +1,5 @@
 using AssetStudio.AppCore.Configuration;
+using AssetStudioGUI.Avalonia.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AssetStudioGUI.Avalonia.ViewModels;
@@ -7,11 +8,13 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private readonly AppSettings _settings;
     private readonly AppSettingsStore _store;
+    private readonly AppLocalizer _localizer;
 
-    public SettingsViewModel(AppSettings settings, AppSettingsStore store)
+    public SettingsViewModel(AppSettings settings, AppSettingsStore store, AppLocalizer localizer)
     {
         _settings = settings;
         _store = store;
+        _localizer = localizer;
         SelectedMode = settings.DecompressionMode;
         DecompressionDirectory = settings.DecompressionDirectory ?? string.Empty;
         CacheRoot = settings.CacheRoot ?? string.Empty;
@@ -28,7 +31,12 @@ public partial class SettingsViewModel : ViewModelBase
         FbxAscii = settings.FbxAscii;
         FbxScaleFactor = settings.FbxScaleFactor;
         RestoreLastSource = settings.RestoreLastSource;
+        SelectedLanguage = AppLocalizer.NormalizeSettingLanguage(settings.Language);
     }
+
+    public AppLocalizer L => _localizer;
+
+    public IReadOnlyList<LanguageOption> Languages => _localizer.Languages;
 
     public IReadOnlyList<BundleDecompressionMode> Modes { get; } = Enum.GetValues<BundleDecompressionMode>();
 
@@ -83,6 +91,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool RestoreLastSource { get; set; }
 
+    [ObservableProperty]
+    public partial string SelectedLanguage { get; set; }
+
     public bool IsDiskDirectoryEnabled => SelectedMode != BundleDecompressionMode.Memory;
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -103,6 +114,8 @@ public partial class SettingsViewModel : ViewModelBase
         _settings.FbxAscii = FbxAscii;
         _settings.FbxScaleFactor = FbxScaleFactor;
         _settings.RestoreLastSource = RestoreLastSource;
+        _settings.Language = AppLocalizer.NormalizeSettingLanguage(SelectedLanguage);
         await _store.SaveAsync(_settings, cancellationToken);
+        _localizer.Language = _settings.Language;
     }
 }

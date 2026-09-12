@@ -1,13 +1,16 @@
 using System.Collections.ObjectModel;
 using AssetStudio.AppCore.Caching;
+using AssetStudioGUI.Avalonia.Localization;
 
 namespace AssetStudioGUI.Avalonia.ViewModels;
 
-public sealed class CacheManagerViewModel(CacheCatalog catalog) : ViewModelBase
+public sealed class CacheManagerViewModel(CacheCatalog catalog, AppLocalizer localizer) : ViewModelBase
 {
+    public AppLocalizer L => localizer;
+
     public ObservableCollection<CacheIndexRowViewModel> Entries { get; } = [];
 
-    public string Summary => $"{Entries.Count:N0} indexes — {Entries.Sum(entry => entry.Info.CacheBytes) / 1024d / 1024d:N1} MB";
+    public string Summary => localizer.Format("CacheSummary", Entries.Count, Entries.Sum(entry => entry.Info.CacheBytes) / 1024d / 1024d);
 
     public async Task RefreshAsync()
     {

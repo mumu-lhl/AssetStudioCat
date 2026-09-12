@@ -7,6 +7,7 @@ using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Inspection;
 using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Preview;
+using AssetStudioGUI.Avalonia.Localization;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -17,6 +18,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private const int PageSize = 250;
     private readonly AppDirectories _directories;
     private readonly AppSettingsStore? _settingsStore;
+    private readonly AppLocalizer _localizer;
+    private string _allTypesLabel;
     private DiskAssetIndex? _currentIndex;
     private AssetPreviewService? _previewService;
     private AssetInspectionService? _inspectionService;
@@ -39,22 +42,37 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private int _pageGeneration;
 
     public MainViewModel()
-        : this(CreateDefaultSettings(), AppDirectories.Detect(), null)
+        : this(CreateDefaultSettings(), AppDirectories.Detect())
     {
     }
 
-    public MainViewModel(AppSettings settings, AppDirectories directories, AppSettingsStore? settingsStore = null)
+    public MainViewModel(
+        AppSettings settings,
+        AppDirectories directories,
+        AppSettingsStore? settingsStore = null,
+        AppLocalizer? localizer = null)
     {
         Settings = settings;
         _directories = directories;
         _settingsStore = settingsStore;
+        _localizer = localizer ?? new AppLocalizer(settings.Language);
+        _allTypesLabel = _localizer["AllTypes"];
+        AssetTypes.Add(_allTypesLabel);
+        SelectedType = _allTypesLabel;
+        StatusText = _localizer["Ready"];
+        PreviewMessage = _localizer["SelectTexturePreview"];
+        AssetInformation = _localizer["NoAssetSelected"];
+        DumpText = _localizer["SelectAssetLoadDump"];
+        _localizer.PropertyChanged += LocalizerChanged;
     }
+
+    public AppLocalizer L => _localizer;
 
     public string Title => "AssetStudioCat";
 
     public ObservableCollection<AssetRowViewModel> Assets { get; } = [];
 
-    public ObservableCollection<string> AssetTypes { get; } = ["All types"];
+    public ObservableCollection<string> AssetTypes { get; } = [];
 
     public ObservableCollection<AssetClassRowViewModel> AssetClasses { get; } = [];
 
@@ -75,14 +93,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public int? NextOffset { get; private set; }
 
     public string PageSummary => _currentIndex is null
-        ? "No index open"
-        : $"Rows {_pageOffset + 1}–{_pageOffset + Assets.Count}";
+        ? T("NoIndexOpen")
+        : T("Rows", _pageOffset + 1, _pageOffset + Assets.Count);
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string SelectedType { get; set; } = "All types";
+    public partial string SelectedType { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial AssetSortField SelectedSortField { get; set; } = AssetSortField.IndexOrder;
@@ -92,13 +110,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public string DecompressionSummary => Settings.DecompressionMode switch
     {
-        BundleDecompressionMode.Memory => "Bundle decompression: memory",
-        BundleDecompressionMode.Disk => $"Bundle decompression: disk ({Settings.DecompressionDirectory})",
-        _ => "Bundle decompression: automatic",
+        BundleDecompressionMode.Memory => T("DecompressionMemory"),
+        BundleDecompressionMode.Disk => T("DecompressionDisk", Settings.DecompressionDirectory),
+        _ => T("DecompressionAuto"),
     };
 
     [ObservableProperty]
-    public partial string StatusText { get; set; } = "Ready";
+    public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial double ProgressValue { get; set; }
@@ -118,10 +136,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial string? PreviewText { get; set; }
 
     [ObservableProperty]
-    public partial string PreviewMessage { get; set; } = "Select a Texture2D asset to preview it.";
+    public partial string PreviewMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string AssetInformation { get; set; } = "No asset selected.";
+    public partial string AssetInformation { get; set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedAsset))]
@@ -131,7 +149,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial AssetRowViewModel? SelectedAsset { get; set; }
 
     [ObservableProperty]
-    public partial string DumpText { get; set; } = "Select an asset, then choose Load dump.";
+    public partial string DumpText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial bool IsDumpBusy { get; set; }
@@ -200,7 +218,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var cancellationToken = _loadCancellation.Token;
         NotifyNavigationChanged();
         ProgressValue = 0;
-        StatusText = forceRebuild ? "Rebuilding asset index…" : "Checking asset index…";
+        StatusText = forceRebuild ? T("RebuildingIndex") : T("CheckingIndex");
         try
         {
             var settings = Settings.Normalize(_directories);
@@ -227,28 +245,28 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var typeCounts = await _currentIndex.GetTypeCountsAsync(cancellationToken);
             AssetTypes.Clear();
             AssetClasses.Clear();
-            AssetTypes.Add("All types");
+            AssetTypes.Add(_allTypesLabel);
             foreach (var typeName in typeCounts.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
             {
                 AssetTypes.Add(typeName);
                 AssetClasses.Add(new AssetClassRowViewModel(typeName, typeCounts[typeName]));
             }
             SceneRoots.Clear();
-            SelectedType = "All types";
+            SelectedType = _allTypesLabel;
             _pageOffset = 0;
             await LoadPageAsync(0, cancellationToken);
             await RememberSourceAsync(_sourcePaths, fileSelection, cancellationToken);
             StatusText = result.ReusedExistingIndex
-                ? $"Opened cached index: {result.AssetCount:N0} assets"
-                : $"Built streaming index: {result.AssetCount:N0} assets; {result.Decompression.Mode} decompression";
+                ? T("OpenedCachedIndex", result.AssetCount)
+                : T("BuiltStreamingIndex", result.AssetCount, result.Decompression.Mode);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Loading cancelled";
+            StatusText = T("LoadingCancelled");
         }
         catch (Exception exception)
         {
-            StatusText = $"Open failed: {exception.Message}";
+            StatusText = T("OpenFailed", exception.Message);
         }
         finally
         {
@@ -285,7 +303,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         else
         {
-            StatusText = "The most recent source is no longer available";
+            StatusText = T("RecentSourceUnavailable");
         }
     }
 
@@ -306,7 +324,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         SelectedAsset = row;
         _dumpCancellation?.Cancel();
         IsDumpBusy = false;
-        DumpText = row is null ? "Select an asset, then choose Load dump." : "Choose Load dump to inspect this object.";
+        DumpText = row is null ? T("SelectAssetLoadDump") : T("ChooseLoadDump");
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _previewCancellation = new CancellationTokenSource();
@@ -319,25 +337,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         previousImage?.Dispose();
         if (row is null)
         {
-            PreviewMessage = "Select a Texture2D asset to preview it.";
-            AssetInformation = "No asset selected.";
+            PreviewMessage = T("SelectTexturePreview");
+            AssetInformation = T("NoAssetSelected");
             return;
         }
 
         AssetInformation = $"{row.Name}\n{row.Type}\nPathID: {row.PathId}\nStored size: {row.Size:N0} bytes";
         if (_previewService is null)
         {
-            PreviewMessage = "The source index is not open.";
+            PreviewMessage = T("IndexNotOpen");
             return;
         }
         if (!_previewService.Supports(row.Type))
         {
-            PreviewMessage = $"Preview for {row.Type} is not implemented yet.";
+            PreviewMessage = T("PreviewNotImplemented", row.Type);
             return;
         }
 
         IsPreviewBusy = true;
-        PreviewMessage = $"Loading {row.Type} from its source bundle…";
+        PreviewMessage = T("LoadingPreview", row.Type);
         try
         {
             var preview = await _previewService.LoadAsync(row.IndexEntry, cancellationToken);
@@ -348,7 +366,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 PreviewImage = new Bitmap(stream);
             }
             PreviewText = preview.Text;
-            PreviewMessage = preview.FromCache ? "Decoded preview cache hit" : string.Empty;
+            PreviewMessage = preview.FromCache ? T("PreviewCacheHit") : string.Empty;
             AssetInformation = preview.Information;
         }
         catch (OperationCanceledException)
@@ -357,7 +375,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (Exception exception)
         {
-            PreviewMessage = $"Preview failed: {exception.Message}";
+            PreviewMessage = T("PreviewFailed", exception.Message);
         }
         finally
         {
@@ -384,20 +402,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsHierarchyBusy = true;
-        StatusText = "Building scene hierarchy from the disk index…";
+        StatusText = T("BuildingHierarchy");
         try
         {
             var roots = await new SceneHierarchyService().BuildAsync(_currentIndex);
             SceneRoots.Clear();
             foreach (var root in roots)
             {
-                SceneRoots.Add(SceneNodeViewModel.FromNode(root));
+                SceneRoots.Add(SceneNodeViewModel.FromNode(root, _localizer));
             }
-            StatusText = $"Scene hierarchy loaded: {roots.Count:N0} roots";
+            StatusText = T("HierarchyLoaded", roots.Count);
         }
         catch (Exception exception)
         {
-            StatusText = $"Hierarchy failed: {exception.Message}";
+            StatusText = T("HierarchyFailed", exception.Message);
         }
         finally
         {
@@ -424,15 +442,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
         IsExportBusy = true;
-        StatusText = $"Exporting scene model {SelectedSceneNode.Name}…";
+        StatusText = T("ExportingSceneModel", SelectedSceneNode.Name);
         try
         {
             var result = await _gameObjectExportService.ExportAsync(SelectedSceneNode.TransformEntry, outputDirectory);
-            StatusText = $"Scene model exported ({result.Files.Count} files)";
+            StatusText = T("SceneModelExported", result.Files.Count);
         }
         catch (Exception exception)
         {
-            StatusText = $"Scene model export failed: {exception.Message}";
+            StatusText = T("SceneModelExportFailed", exception.Message);
         }
         finally
         {
@@ -448,7 +466,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsDumpBusy = true;
-        DumpText = "Loading object dump…";
+        DumpText = T("LoadingDump");
         _dumpCancellation?.Dispose();
         _dumpCancellation = new CancellationTokenSource();
         var cancellationToken = _dumpCancellation.Token;
@@ -457,7 +475,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var result = await _inspectionService.LoadDumpAsync(SelectedAsset.IndexEntry, cancellationToken: cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             DumpText = result.Text;
-            StatusText = result.IsTruncated ? "Dump preview truncated to protect memory" : "Object dump loaded";
+            StatusText = result.IsTruncated ? T("DumpTruncated") : T("DumpLoaded");
         }
         catch (OperationCanceledException)
         {
@@ -465,7 +483,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (Exception exception)
         {
-            DumpText = $"Dump failed: {exception.Message}";
+            DumpText = T("DumpFailed", exception.Message);
         }
         finally
         {
@@ -490,15 +508,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsExportBusy = true;
-        StatusText = "Loading the selected AssetBundle and exporting Animator FBX…";
+        StatusText = T("ExportingAnimator");
         try
         {
             var result = await _animatorExportService.ExportAsync(SelectedAsset.IndexEntry, outputDirectory);
-            StatusText = $"Animator exported ({result.Files.Count} files)";
+            StatusText = T("AnimatorExported", result.Files.Count);
         }
         catch (Exception exception)
         {
-            StatusText = $"Animator export failed: {exception.Message}";
+            StatusText = T("AnimatorExportFailed", exception.Message);
         }
         finally
         {
@@ -514,15 +532,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsExportBusy = true;
-        StatusText = $"Converting {SelectedAsset.Type}…";
+        StatusText = T("Converting", SelectedAsset.Type);
         try
         {
             var result = await _convertedExportService.ExportAsync(SelectedAsset.IndexEntry, outputDirectory);
-            StatusText = result.Note ?? $"Converted asset exported ({result.Files.Count} files)";
+            StatusText = result.Note ?? T("ConvertedExported", result.Files.Count);
         }
         catch (Exception exception)
         {
-            StatusText = $"Converted export failed: {exception.Message}";
+            StatusText = T("ConvertedExportFailed", exception.Message);
         }
         finally
         {
@@ -537,13 +555,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
         IsExportBusy = true;
-        StatusText = "Preparing AudioClip for the system player…";
+        StatusText = T("PreparingAudio");
         try
         {
             var settings = Settings.Normalize(_directories);
             var playbackDirectory = Path.Combine(new CacheLayout(settings).Previews, "audio-playback");
             var result = await _convertedExportService.ExportAsync(SelectedAsset.IndexEntry, playbackDirectory);
-            var file = result.Files.FirstOrDefault() ?? throw new InvalidDataException("Audio export produced no playable file.");
+            var file = result.Files.FirstOrDefault() ?? throw new InvalidDataException(T("AudioExportNoFile"));
             if (OperatingSystem.IsLinux())
             {
                 Process.Start(new ProcessStartInfo("xdg-open", file) { UseShellExecute = false });
@@ -556,11 +574,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
             }
-            StatusText = result.Note ?? "Opened AudioClip in the system player";
+            StatusText = result.Note ?? T("OpenedAudio");
         }
         catch (Exception exception)
         {
-            StatusText = $"Audio playback failed: {exception.Message}";
+            StatusText = T("AudioPlaybackFailed", exception.Message);
         }
         finally
         {
@@ -588,14 +606,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             ? BatchExportService.FromEntries(selectedSnapshot, cancellationToken)
             : _currentIndex.EnumerateAsync(
                 string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-                SelectedType == "All types" ? null : SelectedType,
+                SelectedType == _allTypesLabel ? null : SelectedType,
                 cancellationToken);
         IsExportBusy = true;
         IsBatchExportBusy = true;
-        StatusText = selectedOnly ? "Exporting selected assets…" : "Exporting filtered assets…";
+        StatusText = selectedOnly ? T("ExportingSelected") : T("ExportingFiltered");
         var progress = new Progress<BatchExportProgress>(value =>
         {
-            StatusText = $"Exported {value.Completed}: {value.Succeeded} succeeded, {value.Failed} failed — {value.AssetName}";
+            StatusText = T("ExportProgress", value.Completed, value.Succeeded, value.Failed, value.AssetName);
         });
         try
         {
@@ -606,12 +624,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 progress,
                 cancellationToken);
             StatusText = result.Failed == 0
-                ? $"Batch export complete: {result.Succeeded} succeeded"
-                : $"Batch export complete: {result.Succeeded} succeeded, {result.Failed} failed; see {result.ErrorLogPath}";
+                ? T("BatchExportComplete", result.Succeeded)
+                : T("BatchExportCompleteWithFailures", result.Succeeded, result.Failed, result.ErrorLogPath);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Batch export cancelled";
+            StatusText = T("BatchExportCancelled");
         }
         finally
         {
@@ -632,19 +650,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _exportCancellation = new CancellationTokenSource();
         var token = _exportCancellation.Token;
         IsExtractionBusy = true;
-        StatusText = "Extracting Bundle files…";
+        StatusText = T("ExtractingBundles");
         try
         {
             var progress = new Progress<BundleExtractionProgress>(value =>
             {
-                StatusText = $"Extracted {value.ExtractedFiles:N0} files — {value.CompletedSources:N0}/{value.TotalSources:N0}: {Path.GetFileName(value.SourcePath)}";
+                StatusText = T("ExtractionProgress", value.ExtractedFiles, value.CompletedSources, value.TotalSources, Path.GetFileName(value.SourcePath));
             });
             var count = await _bundleExtractionService.ExtractAsync(_sourcePaths, outputDirectory, progress, token);
-            StatusText = $"Bundle extraction complete: {count:N0} files";
+            StatusText = T("ExtractionComplete", count);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Bundle extraction cancelled";
+            StatusText = T("ExtractionCancelled");
         }
         catch (Exception exception)
         {
@@ -665,7 +683,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _exportCancellation?.Dispose();
         _exportCancellation = new CancellationTokenSource();
         IsExportBusy = true;
-        StatusText = "Writing filtered asset list…";
+        StatusText = T("WritingAssetList");
         try
         {
             var count = await _assetListExportService.ExportAsync(
@@ -673,17 +691,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 outputPath,
                 format,
                 string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-                SelectedType == "All types" ? null : SelectedType,
+                SelectedType == _allTypesLabel ? null : SelectedType,
                 _exportCancellation.Token);
-            StatusText = $"Asset list exported: {count:N0} rows";
+            StatusText = T("AssetListExported", count);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Asset list export cancelled";
+            StatusText = T("AssetListCancelled");
         }
         catch (Exception exception)
         {
-            StatusText = $"Asset list export failed: {exception.Message}";
+            StatusText = T("AssetListExportFailed", exception.Message);
         }
         finally
         {
@@ -699,17 +717,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         IsExportBusy = true;
-        StatusText = dump ? "Exporting complete dump…" : "Streaming raw asset to disk…";
+        StatusText = dump ? T("ExportingDump") : T("StreamingRaw");
         try
         {
             var result = dump
                 ? await _exportService.ExportDumpAsync(SelectedAsset.IndexEntry, outputPath)
                 : await _exportService.ExportRawAsync(SelectedAsset.IndexEntry, outputPath);
-            StatusText = $"Exported {result.Files.Count} file{(result.Files.Count == 1 ? string.Empty : "s")}";
+            StatusText = T("ExportedFiles", result.Files.Count, result.Files.Count == 1 ? string.Empty : "s");
         }
         catch (Exception exception)
         {
-            StatusText = $"Export failed: {exception.Message}";
+            StatusText = T("ExportFailed", exception.Message);
         }
         finally
         {
@@ -736,7 +754,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 offset,
                 PageSize,
                 string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-                SelectedType == "All types" ? null : SelectedType,
+                SelectedType == _allTypesLabel ? null : SelectedType,
                 SelectedSortField,
                 SortDescending), token);
         }
@@ -792,6 +810,32 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanOpenRecent));
     }
 
+    private string T(string key, params object?[] arguments) => arguments.Length == 0
+        ? _localizer[key]
+        : _localizer.Format(key, arguments);
+
+    private void LocalizerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName != "Item[]")
+        {
+            return;
+        }
+
+        var selectedAllTypes = SelectedType == _allTypesLabel;
+        var index = AssetTypes.IndexOf(_allTypesLabel);
+        _allTypesLabel = _localizer["AllTypes"];
+        if (index >= 0)
+        {
+            AssetTypes[index] = _allTypesLabel;
+        }
+        if (selectedAllTypes)
+        {
+            SelectedType = _allTypesLabel;
+        }
+        OnPropertyChanged(nameof(PageSummary));
+        OnPropertyChanged(nameof(DecompressionSummary));
+    }
+
     private void NotifyNavigationChanged()
     {
         OnPropertyChanged(nameof(HasSource));
@@ -801,6 +845,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _localizer.PropertyChanged -= LocalizerChanged;
         _previewCancellation?.Cancel();
         _previewCancellation?.Dispose();
         _dumpCancellation?.Cancel();
@@ -837,9 +882,9 @@ public sealed record SceneNodeViewModel(
     AssetIndexEntry TransformEntry,
     IReadOnlyList<SceneNodeViewModel> Children)
 {
-    public static SceneNodeViewModel FromNode(SceneHierarchyNode node) => new(
+    public static SceneNodeViewModel FromNode(SceneHierarchyNode node, AppLocalizer localizer) => new(
         node.Name,
-        $"PathID {node.GameObjectPathId}",
+        localizer.Format("ScenePathId", node.GameObjectPathId),
         node.TransformEntry,
-        node.Children.Select(FromNode).ToArray());
+        node.Children.Select(child => FromNode(child, localizer)).ToArray());
 }
