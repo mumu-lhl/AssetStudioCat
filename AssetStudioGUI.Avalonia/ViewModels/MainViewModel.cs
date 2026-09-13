@@ -1172,49 +1172,61 @@ public sealed record SceneNodeViewModel(
         node.Children.Select(child => FromNode(child, localizer)).ToArray());
 }
 
-public sealed record ContainerTreeNodeViewModel(
-    string Name,
-    string FullPath,
-    string Details,
-    string Icon,
-    bool IsDirectory,
-    int TotalAssetCount,
-    IReadOnlyList<ContainerTreeNodeViewModel> Children)
+public sealed class ContainerTreeNodeViewModel
 {
+    private readonly ContainerHierarchyNode _node;
+    private readonly AppLocalizer _localizer;
+    private IReadOnlyList<ContainerTreeNodeViewModel>? _children;
+
+    public ContainerTreeNodeViewModel(ContainerHierarchyNode node, AppLocalizer localizer)
+    {
+        _node = node;
+        _localizer = localizer;
+        Name = node.Name switch
+        {
+            "AllAssets" => localizer["AllAssets"],
+            "(No Container)" => localizer["NoContainerGroup"],
+            _ => node.Name
+        };
+        FullPath = node.FullPath;
+        Details = localizer.Format("ContainerItemCount", node.TotalAssetCount);
+        IsDirectory = node.IsDirectory;
+        TotalAssetCount = node.TotalAssetCount;
+        Icon = node.Name switch
+        {
+            "AllAssets" => "🌐",
+            "(No Container)" => "📁",
+            _ => node.IsDirectory && node.Children.Count > 0 ? "📁" : "📦"
+        };
+    }
+
+    public string Name { get; }
+    public string FullPath { get; }
+    public string Details { get; }
+    public string Icon { get; }
+    public bool IsDirectory { get; }
+    public int TotalAssetCount { get; }
     public FontWeight NameFontWeight => IsDirectory ? FontWeight.SemiBold : FontWeight.Normal;
 
-    public static ContainerTreeNodeViewModel FromNode(ContainerHierarchyNode node, AppLocalizer localizer)
+    public IReadOnlyList<ContainerTreeNodeViewModel> Children
     {
-        string icon;
-        string details = localizer.Format("ContainerItemCount", node.TotalAssetCount);
-        string name = node.Name;
+        get
+        {
+            if (_children is not null) return _children;
+            if (_node.Children.Count == 0)
+            {
+                return _children = [];
+            }
 
-        if (name == "AllAssets")
-        {
-            name = localizer["AllAssets"];
-            icon = "🌐";
+            var array = new ContainerTreeNodeViewModel[_node.Children.Count];
+            for (int i = 0; i < _node.Children.Count; i++)
+            {
+                array[i] = new ContainerTreeNodeViewModel(_node.Children[i], _localizer);
+            }
+            return _children = array;
         }
-        else if (name == "(No Container)")
-        {
-            name = localizer["NoContainerGroup"];
-            icon = "📁";
-        }
-        else if (node.IsDirectory && node.Children.Count > 0)
-        {
-            icon = "📁";
-        }
-        else
-        {
-            icon = "📦";
-        }
-
-        return new ContainerTreeNodeViewModel(
-            name,
-            node.FullPath,
-            details,
-            icon,
-            node.IsDirectory,
-            node.TotalAssetCount,
-            node.Children.Select(child => FromNode(child, localizer)).ToArray());
     }
+
+    public static ContainerTreeNodeViewModel FromNode(ContainerHierarchyNode node, AppLocalizer localizer) =>
+        new(node, localizer);
 }

@@ -944,6 +944,12 @@ public sealed class DiskAssetIndex : IAssetIndex
 
             _index._cachedMetadata = metadata;
             _index._cachedEntries = null;
+
+            var containersPath = Path.Combine(_index.DirectoryPath, "containers.bin");
+            if (File.Exists(containersPath))
+            {
+                try { File.Delete(containersPath); } catch { }
+            }
         }
 
         public async ValueTask DisposeAsync()

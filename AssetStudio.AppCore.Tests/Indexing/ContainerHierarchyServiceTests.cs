@@ -15,7 +15,8 @@ public sealed class ContainerHierarchyServiceTests : IDisposable
         var index = new DiskAssetIndex(Path.Combine(_root, "indexes"), source);
         await index.BuildAsync(AssetSourceFingerprint.Create(source), CreateSampleEntries());
 
-        var roots = await new ContainerHierarchyService().BuildAsync(index);
+        var service = new ContainerHierarchyService();
+        var roots = await service.BuildAsync(index);
 
         Assert.Equal(4, roots.Count);
 
@@ -58,6 +59,16 @@ public sealed class ContainerHierarchyServiceTests : IDisposable
         var noContainerDir = roots.First(r => r.Name == "(No Container)");
         Assert.Equal(1, noContainerDir.TotalAssetCount);
         Assert.Empty(noContainerDir.Children);
+
+        // Verify cache file was created
+        var cacheFile = Path.Combine(index.DirectoryPath, "containers.bin");
+        Assert.True(File.Exists(cacheFile));
+
+        // Load again from cache and verify equality
+        var cachedRoots = await service.BuildAsync(index);
+        Assert.Equal(roots.Count, cachedRoots.Count);
+        Assert.Equal(roots[0].TotalAssetCount, cachedRoots[0].TotalAssetCount);
+        Assert.Equal(roots[1].Children.Count, cachedRoots[1].Children.Count);
     }
 
     private static async IAsyncEnumerable<AssetIndexEntry> CreateSampleEntries()
@@ -79,6 +90,32 @@ public sealed class ContainerHierarchyServiceTests : IDisposable
         string? container,
         string file) => new(
         id, "/source", "/source/bundle", file, id, 0, type, name, container, 0, 1024);
+
+    [Fact]
+    public async Task BenchmarkBuildHierarchyOnRealData()
+    {
+        var dir = "/home/mumulhl/data/bangdream-data/data";
+        var cacheRoot = "/home/mumulhl/data/AssetStudioCatData/cache/indexes";
+        if (!Directory.Exists(dir) || !Directory.Exists(cacheRoot)) return;
+
+        var fingerprint = AssetSourceFingerprint.Create(dir);
+        var index = new DiskAssetIndex(cacheRoot, fingerprint.IndexKey);
+        if (!await index.IsCurrentAsync(fingerprint)) return;
+
+        var service = new ContainerHierarchyService();
+
+        // 1. Cached load timing
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var cachedRoots = await service.BuildAsync(index);
+        var cachedTime = sw.ElapsedMilliseconds;
+
+        int CountNodes(ContainerHierarchyNode n) => 1 + n.Children.Sum(CountNodes);
+        int totalNodes = cachedRoots.Sum(CountNodes);
+        System.Console.WriteLine($"[Benchmark] Cached container tree load: {cachedTime} ms (nodes: {totalNodes})");
+
+        Assert.NotEmpty(cachedRoots);
+        Assert.True(totalNodes > 100_000);
+    }
 
     public void Dispose()
     {
