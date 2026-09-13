@@ -1159,18 +1159,48 @@ public sealed record AssetRowViewModel(
 
 public sealed record AssetClassRowViewModel(string TypeName, long Count);
 
-public sealed record SceneNodeViewModel(
-    string Name,
-    string Details,
-    AssetIndexEntry TransformEntry,
-    IReadOnlyList<SceneNodeViewModel> Children)
+public sealed class SceneNodeViewModel
 {
-    public static SceneNodeViewModel FromNode(SceneHierarchyNode node, AppLocalizer localizer) => new(
-        node.Name,
-        localizer.Format("ScenePathId", node.GameObjectPathId),
-        node.TransformEntry,
-        node.Children.Select(child => FromNode(child, localizer)).ToArray());
+    private readonly SceneHierarchyNode _node;
+    private readonly AppLocalizer _localizer;
+    private IReadOnlyList<SceneNodeViewModel>? _children;
+
+    public SceneNodeViewModel(SceneHierarchyNode node, AppLocalizer localizer)
+    {
+        _node = node;
+        _localizer = localizer;
+        Name = node.Name;
+        Details = localizer.Format("ScenePathId", node.GameObjectPathId);
+        TransformEntry = node.TransformEntry;
+    }
+
+    public string Name { get; }
+    public string Details { get; }
+    public AssetIndexEntry TransformEntry { get; }
+
+    public IReadOnlyList<SceneNodeViewModel> Children
+    {
+        get
+        {
+            if (_children is not null) return _children;
+            if (_node.Children.Count == 0)
+            {
+                return _children = [];
+            }
+
+            var array = new SceneNodeViewModel[_node.Children.Count];
+            for (int i = 0; i < _node.Children.Count; i++)
+            {
+                array[i] = new SceneNodeViewModel(_node.Children[i], _localizer);
+            }
+            return _children = array;
+        }
+    }
+
+    public static SceneNodeViewModel FromNode(SceneHierarchyNode node, AppLocalizer localizer) =>
+        new(node, localizer);
 }
+
 
 public sealed class ContainerTreeNodeViewModel
 {

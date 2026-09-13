@@ -950,6 +950,11 @@ public sealed class DiskAssetIndex : IAssetIndex
             {
                 try { File.Delete(containersPath); } catch { }
             }
+            var scenesPath = Path.Combine(_index.DirectoryPath, "scenes.bin");
+            if (File.Exists(scenesPath))
+            {
+                try { File.Delete(scenesPath); } catch { }
+            }
         }
 
         public async ValueTask DisposeAsync()
