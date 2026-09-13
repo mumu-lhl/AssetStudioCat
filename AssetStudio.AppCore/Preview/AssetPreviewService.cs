@@ -27,7 +27,7 @@ public sealed class AssetPreviewService
     }
 
     public bool Supports(string typeName) => typeName is
-        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "AudioClip" or "MonoScript" or "MonoBehaviour";
+        "Texture2D" or "Sprite" or "Mesh" or "TextAsset" or "Shader" or "Material" or "AudioClip" or "MonoScript" or "MonoBehaviour";
 
     public async Task<AssetPreview> LoadAsync(
         AssetIndexEntry entry,
@@ -44,7 +44,7 @@ public sealed class AssetPreviewService
             return new AssetPreview(cached, null, DescribeBasic(entry, "Decoded preview cache"), true);
         }
 
-        var needsGraph = entry.TypeName is "Sprite" or "MonoBehaviour";
+        var needsGraph = entry.TypeName is "Sprite" or "MonoBehaviour" or "Material";
         using var session = await (needsGraph
             ? _objectLoader.OpenDependencyGraphAsync(entry, cancellationToken)
             : _objectLoader.OpenAsync(entry, cancellationToken));
@@ -57,6 +57,7 @@ public sealed class AssetPreviewService
             Mesh mesh => PreviewMesh(entry, mesh, cancellationToken),
             TextAsset text => PreviewText(entry, DecodeText(text.m_Script)),
             Shader shader => PreviewText(entry, shader.Convert()),
+            Material material => PreviewMaterial(entry, material),
             AudioClip audio => PreviewAudio(entry, audio),
             MonoScript script => PreviewMonoScript(entry, script),
             MonoBehaviour monoBehaviour => PreviewMonoBehaviour(entry, monoBehaviour),
@@ -166,6 +167,101 @@ public sealed class AssetPreviewService
 
         // No dump available – show metadata only.
         return new AssetPreview(null, info.ToString(), DescribeBasic(entry, "MonoBehaviour metadata"));
+    }
+
+    private static AssetPreview PreviewMaterial(AssetIndexEntry entry, Material material)
+    {
+        var info = new StringBuilder();
+        info.AppendLine($"Name: {DisplayValue(entry.Name)}");
+        info.AppendLine("Type: Material");
+        info.AppendLine($"PathID: {entry.PathId}");
+        info.AppendLine($"Stored size: {entry.ByteSize:N0} bytes");
+
+        if (material.m_Shader.TryGet(out var shader))
+        {
+            info.AppendLine($"Shader: {shader.m_Name}");
+        }
+        else
+        {
+            info.AppendLine($"Shader: (PathID {material.m_Shader.m_PathID})");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Material: {DisplayValue(entry.Name)}");
+        if (material.m_Shader.TryGet(out var s))
+        {
+            sb.AppendLine($"Shader: {s.m_Name}");
+        }
+        else
+        {
+            sb.AppendLine($"Shader: (PathID {material.m_Shader.m_PathID})");
+        }
+        sb.AppendLine();
+
+        if (material.m_SavedProperties != null)
+        {
+            if (material.m_SavedProperties.m_TexEnvs?.Count > 0)
+            {
+                sb.AppendLine("Textures:");
+                foreach (var tex in material.m_SavedProperties.m_TexEnvs)
+                {
+                    var texName = tex.Value.m_Texture.TryGet(out var t) ? t.m_Name : $"(PathID {tex.Value.m_Texture.m_PathID})";
+                    sb.AppendLine($"  {tex.Key}: {texName} (scale: {tex.Value.m_Scale}, offset: {tex.Value.m_Offset})");
+                }
+                sb.AppendLine();
+            }
+
+            if (material.m_SavedProperties.m_Colors?.Count > 0)
+            {
+                sb.AppendLine("Colors:");
+                foreach (var col in material.m_SavedProperties.m_Colors)
+                {
+                    sb.AppendLine($"  {col.Key}: (R: {col.Value.R:F3}, G: {col.Value.G:F3}, B: {col.Value.B:F3}, A: {col.Value.A:F3})");
+                }
+                sb.AppendLine();
+            }
+
+            if (material.m_SavedProperties.m_Floats?.Count > 0)
+            {
+                sb.AppendLine("Floats:");
+                foreach (var flt in material.m_SavedProperties.m_Floats)
+                {
+                    sb.AppendLine($"  {flt.Key}: {flt.Value}");
+                }
+                sb.AppendLine();
+            }
+
+            if (material.m_SavedProperties.m_Ints?.Count > 0)
+            {
+                sb.AppendLine("Ints:");
+                foreach (var val in material.m_SavedProperties.m_Ints)
+                {
+                    sb.AppendLine($"  {val.Key}: {val.Value}");
+                }
+                sb.AppendLine();
+            }
+        }
+
+        var dumpText = material.Dump();
+        if (string.IsNullOrEmpty(dumpText))
+        {
+            dumpText = material.DumpObject();
+        }
+
+        if (!string.IsNullOrEmpty(dumpText))
+        {
+            sb.AppendLine("--- Serialized Dump ---");
+            sb.AppendLine(dumpText);
+        }
+
+        var fullText = sb.ToString();
+        var truncated = fullText.Length > MaximumTextCharacters;
+        if (truncated)
+        {
+            fullText = fullText[..MaximumTextCharacters] + "\n\n[Preview truncated. Use dump export for the complete object.]";
+        }
+
+        return new AssetPreview(null, fullText, info.ToString());
     }
 
     private static string DisplayValue(string? value) => string.IsNullOrWhiteSpace(value) ? "(not available)" : value;

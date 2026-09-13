@@ -53,6 +53,11 @@ public sealed class ConvertedAssetExportService
                 entry,
                 outputDirectory,
                 ".json"),
+            Material material => ExportText(
+                material.Dump() ?? material.DumpObject() ?? throw new NotSupportedException("The Material could not be converted to text."),
+                entry,
+                outputDirectory,
+                ".txt"),
             Font font => ExportFont(font, entry, outputDirectory),
             Mesh mesh => ExportMesh(mesh, entry, outputDirectory, cancellationToken),
             _ => throw new NotSupportedException($"Converted export for {entry.TypeName} is not implemented."),

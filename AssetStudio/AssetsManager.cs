@@ -238,8 +238,7 @@ namespace AssetStudio
                 ClassIDType.PlayerSettings => new PlayerSettings(objectReader),
                 ClassIDType.PreloadData => new PreloadData(objectReader),
                 ClassIDType.RectTransform => new RectTransform(objectReader),
-                ClassIDType.Shader when objectReader.version < 2021 => new Shader(objectReader),
-                ClassIDType.Shader => null,
+                ClassIDType.Shader => new Shader(objectReader),
                 ClassIDType.SkinnedMeshRenderer => new SkinnedMeshRenderer(objectReader),
                 ClassIDType.Sprite => new Sprite(objectReader),
                 ClassIDType.SpriteAtlas => new SpriteAtlas(objectReader),
@@ -817,8 +816,7 @@ namespace AssetStudio
                                 obj = new RectTransform(objectReader);
                                 break;
                             case ClassIDType.Shader:
-                                if (objectReader.version < 2021)
-                                    obj = new Shader(objectReader);
+                                obj = new Shader(objectReader);
                                 break;
                             case ClassIDType.SkinnedMeshRenderer:
                                 obj = new SkinnedMeshRenderer(objectReader);
