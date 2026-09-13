@@ -96,9 +96,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<AssetClassRowViewModel> AssetClasses { get; } = [];
 
-    public ObservableCollection<SceneNodeViewModel> SceneRoots { get; } = [];
+    public FastObservableCollection<SceneNodeViewModel> SceneRoots { get; } = [];
 
-    public ObservableCollection<ContainerTreeNodeViewModel> ContainerTreeRoots { get; } = [];
+    public FastObservableCollection<ContainerTreeNodeViewModel> ContainerTreeRoots { get; } = [];
+
+    [ObservableProperty]
+    private int _selectedLeftTabIndex;
+
+    public bool IsContainerTabVisible => SelectedLeftTabIndex == 0;
+    public bool IsSceneTabVisible => SelectedLeftTabIndex == 1;
+    public bool IsAssetClassesTabVisible => SelectedLeftTabIndex == 2;
+
+    partial void OnSelectedLeftTabIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsContainerTabVisible));
+        OnPropertyChanged(nameof(IsSceneTabVisible));
+        OnPropertyChanged(nameof(IsAssetClassesTabVisible));
+    }
 
     public IReadOnlyList<AssetSortField> SortFields { get; } = Enum.GetValues<AssetSortField>();
 
@@ -614,11 +628,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             var roots = await GetOrLoadSceneHierarchyAsync();
-            SceneRoots.Clear();
-            foreach (var root in roots)
+            var localizer = _localizer;
+            var viewModels = await Task.Run(() =>
             {
-                SceneRoots.Add(SceneNodeViewModel.FromNode(root, _localizer));
-            }
+                var list = new List<SceneNodeViewModel>(roots.Count);
+                for (int i = 0; i < roots.Count; i++)
+                {
+                    list.Add(SceneNodeViewModel.FromNode(roots[i], localizer));
+                }
+                return list;
+            });
+
+            SceneRoots.ReplaceAll(viewModels);
             StatusText = T("HierarchyLoaded", roots.Count);
         }
         catch (Exception exception)
@@ -647,11 +668,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 return await service.BuildAsync(_currentIndex, cancellationToken);
             }, cancellationToken);
 
-            ContainerTreeRoots.Clear();
-            foreach (var root in _containerHierarchyRoots)
+            var localizer = _localizer;
+            var viewModels = await Task.Run(() =>
             {
-                ContainerTreeRoots.Add(ContainerTreeNodeViewModel.FromNode(root, _localizer));
-            }
+                var list = new List<ContainerTreeNodeViewModel>(_containerHierarchyRoots.Count);
+                for (int i = 0; i < _containerHierarchyRoots.Count; i++)
+                {
+                    list.Add(ContainerTreeNodeViewModel.FromNode(_containerHierarchyRoots[i], localizer));
+                }
+                return list;
+            }, cancellationToken);
+
+            ContainerTreeRoots.ReplaceAll(viewModels);
             OnPropertyChanged(nameof(ContainerTreeSummary));
         }
         catch (OperationCanceledException)
@@ -1136,11 +1164,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         if (_containerHierarchyRoots is not null)
         {
-            ContainerTreeRoots.Clear();
+            var viewModels = new List<ContainerTreeNodeViewModel>(_containerHierarchyRoots.Count);
             foreach (var root in _containerHierarchyRoots)
             {
-                ContainerTreeRoots.Add(ContainerTreeNodeViewModel.FromNode(root, _localizer));
+                viewModels.Add(ContainerTreeNodeViewModel.FromNode(root, _localizer));
             }
+            ContainerTreeRoots.ReplaceAll(viewModels);
         }
         OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(DecompressionSummary));
@@ -1201,18 +1230,18 @@ public sealed class SceneNodeViewModel
     private readonly SceneHierarchyNode _node;
     private readonly AppLocalizer _localizer;
     private IReadOnlyList<SceneNodeViewModel>? _children;
+    private string? _details;
 
     public SceneNodeViewModel(SceneHierarchyNode node, AppLocalizer localizer)
     {
         _node = node;
         _localizer = localizer;
         Name = node.Name;
-        Details = localizer.Format("ScenePathId", node.GameObjectPathId);
         TransformEntry = node.TransformEntry;
     }
 
     public string Name { get; }
-    public string Details { get; }
+    public string Details => _details ??= _localizer.Format("ScenePathId", _node.GameObjectPathId);
     public AssetIndexEntry TransformEntry { get; }
 
     public IReadOnlyList<SceneNodeViewModel> Children

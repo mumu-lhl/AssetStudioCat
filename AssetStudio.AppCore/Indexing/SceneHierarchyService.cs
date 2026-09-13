@@ -259,7 +259,7 @@ public sealed class SceneHierarchyService
         return await Task.Run<IReadOnlyList<SceneHierarchyNode>?>(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var stream = new FileStream(cachePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 128 * 1024);
+            using var stream = new FileStream(cachePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 1024 * 1024, FileOptions.SequentialScan);
             using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
 
             if (reader.ReadUInt32() != CacheMagic) return null;
