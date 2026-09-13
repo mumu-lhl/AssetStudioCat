@@ -40,6 +40,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _pageCancellation;
     private readonly List<AssetRowViewModel> _selectedAssets = [];
     private IReadOnlyList<ContainerHierarchyNode>? _containerHierarchyRoots;
+    private IReadOnlyList<SceneHierarchyNode>? _sceneHierarchyRoots;
     private IReadOnlyList<string> _sourcePaths = [];
     private readonly AssetStudioHttpServer? _httpServer;
     private bool _openedAsFileSelection;
@@ -398,6 +399,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 AssetClasses.Add(new AssetClassRowViewModel(typeName, typeCounts[typeName]));
             }
             SceneRoots.Clear();
+            _sceneHierarchyRoots = null;
             _containerHierarchyRoots = null;
             ContainerTreeRoots.Clear();
             SelectedContainerPath = null;
@@ -583,6 +585,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SelectedAssetCount));
     }
 
+    public async Task<IReadOnlyList<SceneHierarchyNode>> GetOrLoadSceneHierarchyAsync(CancellationToken cancellationToken = default)
+    {
+        if (_sceneHierarchyRoots is not null)
+        {
+            return _sceneHierarchyRoots;
+        }
+
+        if (_currentIndex is null)
+        {
+            return [];
+        }
+
+        var roots = await new SceneHierarchyService().BuildAsync(_currentIndex, cancellationToken);
+        _sceneHierarchyRoots = roots;
+        return roots;
+    }
+
     public async Task LoadHierarchyAsync()
     {
         if (_currentIndex is null || IsHierarchyBusy)
@@ -594,7 +613,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         StatusText = T("BuildingHierarchy");
         try
         {
-            var roots = await new SceneHierarchyService().BuildAsync(_currentIndex);
+            var roots = await GetOrLoadSceneHierarchyAsync();
             SceneRoots.Clear();
             foreach (var root in roots)
             {

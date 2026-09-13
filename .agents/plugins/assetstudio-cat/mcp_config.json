@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "assetstudio-cat": {
+      "command": "python3",
+      "args": ["mcp/assetstudio_mcp.py"]
+    }
+  }
+}

@@ -9,7 +9,8 @@ This directory contains the lightweight Model Context Protocol (MCP) server brid
   - `inspect_asset` defaults to `view_mode="summary"`, extracting only vital `Properties { ... }` blocks and SubShader tags for Shaders.
   - Full source mode (`view_mode="raw"`) provides line-based pagination (`start_line`, `max_lines`) to inspect large shaders safely without blowing out context tokens.
 - **Cross-referencing (`get_asset_references`)**: Find which materials use a shader, or which textures a material binds to.
-- **Direct export (`export_assets`)**: Export discovered character models (FBX), shaders (.shader), or textures (PNG) directly to your local folder.
+- **Scene Hierarchy & Rigged Model Export (`get_scene_hierarchy`, `export_scene_model`)**: Locate character hierarchy roots and export complete rigged FBX models with skeletal bone hierarchies and skinned mesh bindings.
+- **Direct asset export (`export_assets`)**: Export individual assets (shaders to `.shader`, textures to PNG, audio to WAV, etc.) directly to your local folder.
 - **Zero external dependencies**: Implemented using pure Python 3 standard library (no pip packages needed).
 
 ---

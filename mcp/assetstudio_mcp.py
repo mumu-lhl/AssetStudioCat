@@ -211,6 +211,53 @@ TOOLS = [
             "required": ["asset_ids", "output_directory"],
             "additionalProperties": False
         }
+    },
+    {
+        "name": "get_scene_hierarchy",
+        "description": "Retrieve or search scene hierarchy nodes (GameObjects / Transforms). Used to locate character model roots (e.g. searching for character name or body root) for complete FBX export.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Optional search keyword to find nodes by name across the scene hierarchy (e.g. 'Character', 'Root', 'Body', 'Armature')."
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Maximum tree depth to return when query is empty (default: 3, max: 20).",
+                    "default": 3
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of nodes to return (default: 30, max: 200).",
+                    "default": 30
+                }
+            },
+            "additionalProperties": False
+        }
+    },
+    {
+        "name": "export_scene_model",
+        "description": "Export a character or scene model from the scene hierarchy as a complete rigged FBX file with bones, skinned meshes, and textures, equivalent to the GUI 'Export Selected Model' action.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transform_id": {
+                    "type": "integer",
+                    "description": "The unique asset ID of the Transform / RectTransform node (obtained from get_scene_hierarchy or search_assets)."
+                },
+                "transform_path_id": {
+                    "type": "integer",
+                    "description": "The Unity PathID of the Transform / RectTransform node (alternative to transform_id)."
+                },
+                "output_directory": {
+                    "type": "string",
+                    "description": "Target directory on disk where the FBX model and associated textures will be exported."
+                }
+            },
+            "required": ["output_directory"],
+            "additionalProperties": False
+        }
     }
 ]
 
@@ -261,6 +308,27 @@ def execute_tool(name: str, args: Dict[str, Any]) -> str:
             "format": args.get("format", "converted")
         }
         data = http_post("/api/assets/export", body)
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    elif name == "get_scene_hierarchy":
+        params = {
+            "q": args.get("query"),
+            "max_depth": args.get("max_depth", 3),
+            "limit": args.get("limit", 30)
+        }
+        data = http_get("/api/scene/hierarchy", params)
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    elif name == "export_scene_model":
+        body: Dict[str, Any] = {
+            "output_directory": args["output_directory"]
+        }
+        if "transform_id" in args:
+            body["transform_id"] = args["transform_id"]
+        if "transform_path_id" in args:
+            body["transform_path_id"] = args["transform_path_id"]
+
+        data = http_post("/api/scene/export", body)
         return json.dumps(data, indent=2, ensure_ascii=False)
 
     else:

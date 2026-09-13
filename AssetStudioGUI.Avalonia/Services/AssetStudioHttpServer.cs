@@ -166,6 +166,19 @@ public sealed class AssetStudioHttpServer : IDisposable
                         await SendErrorAsync(response, HttpStatusCode.MethodNotAllowed, "Only POST is allowed for export.");
                     }
                     break;
+                case "/api/scene/hierarchy":
+                    await HandleSceneHierarchyAsync(context);
+                    break;
+                case "/api/scene/export":
+                    if (request.HttpMethod == "POST")
+                    {
+                        await HandleExportSceneModelAsync(context);
+                    }
+                    else
+                    {
+                        await SendErrorAsync(response, HttpStatusCode.MethodNotAllowed, "Only POST is allowed for scene export.");
+                    }
+                    break;
                 default:
                     await SendErrorAsync(response, HttpStatusCode.NotFound, $"Endpoint not found: {path}");
                     break;
@@ -661,6 +674,222 @@ public sealed class AssetStudioHttpServer : IDisposable
         };
 
         await SendJsonAsync(context.Response, result);
+    }
+
+    private async Task HandleSceneHierarchyAsync(HttpListenerContext context)
+    {
+        var index = _viewModel.CurrentIndex;
+        if (index is null)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.BadRequest, "No index is currently open in AssetStudioCat GUI.");
+            return;
+        }
+
+        var query = context.Request.QueryString;
+        var q = query["q"] ?? query["query"];
+        int maxDepth = 10;
+        if (int.TryParse(query["max_depth"], out var parsedDepth) && parsedDepth >= 0)
+        {
+            maxDepth = Math.Clamp(parsedDepth, 0, 50);
+        }
+
+        int limit = 50;
+        if (int.TryParse(query["limit"], out var parsedLimit) && parsedLimit > 0)
+        {
+            limit = Math.Clamp(parsedLimit, 1, 200);
+        }
+
+        var roots = await _viewModel.GetOrLoadSceneHierarchyAsync();
+
+        var nodesArray = new JsonArray();
+        int matchedCount = 0;
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            // Search mode: find nodes anywhere matching the query
+            var searchKeyword = q.Trim();
+            void SearchNodes(SceneHierarchyNode node, int depth)
+            {
+                if (matchedCount >= limit) return;
+
+                if (node.Name.Contains(searchKeyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedCount++;
+                    nodesArray.Add(new JsonObject
+                    {
+                        ["name"] = node.Name,
+                        ["game_object_path_id"] = node.GameObjectPathId,
+                        ["serialized_file"] = node.SerializedFile,
+                        ["transform_id"] = node.TransformEntry.Id,
+                        ["transform_path_id"] = node.TransformEntry.PathId,
+                        ["children_count"] = node.Children.Count,
+                        ["depth"] = depth
+                    });
+                }
+
+                foreach (var child in node.Children)
+                {
+                    if (matchedCount >= limit) break;
+                    SearchNodes(child, depth + 1);
+                }
+            }
+
+            foreach (var root in roots)
+            {
+                if (matchedCount >= limit) break;
+                SearchNodes(root, 0);
+            }
+        }
+        else
+        {
+            // Tree mode: return hierarchical tree up to maxDepth
+            JsonObject FormatNode(SceneHierarchyNode node, int depth)
+            {
+                var nodeObj = new JsonObject
+                {
+                    ["name"] = node.Name,
+                    ["game_object_path_id"] = node.GameObjectPathId,
+                    ["serialized_file"] = node.SerializedFile,
+                    ["transform_id"] = node.TransformEntry.Id,
+                    ["transform_path_id"] = node.TransformEntry.PathId,
+                    ["children_count"] = node.Children.Count
+                };
+
+                if (depth < maxDepth && node.Children.Count > 0)
+                {
+                    var childrenArray = new JsonArray();
+                    foreach (var child in node.Children)
+                    {
+                        childrenArray.Add(FormatNode(child, depth + 1));
+                    }
+                    nodeObj["children"] = childrenArray;
+                }
+
+                return nodeObj;
+            }
+
+            int count = 0;
+            foreach (var root in roots)
+            {
+                if (count >= limit) break;
+                nodesArray.Add(FormatNode(root, 0));
+                count++;
+            }
+        }
+
+        var result = new JsonObject
+        {
+            ["total_roots"] = roots.Count,
+            ["returned_count"] = nodesArray.Count,
+            ["nodes"] = nodesArray
+        };
+
+        await SendJsonAsync(context.Response, result);
+    }
+
+    private async Task HandleExportSceneModelAsync(HttpListenerContext context)
+    {
+        var index = _viewModel.CurrentIndex;
+        if (index is null)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.BadRequest, "No index is currently open in AssetStudioCat GUI.");
+            return;
+        }
+
+        var exportService = _viewModel.GameObjectExportService;
+        if (exportService is null)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.BadRequest, "GameObjectExportService is not available.");
+            return;
+        }
+
+        using var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8);
+        var body = await reader.ReadToEndAsync();
+        var jsonNode = JsonNode.Parse(body);
+        if (jsonNode is null)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.BadRequest, "Invalid JSON body.");
+            return;
+        }
+
+        var outputDir = jsonNode["output_directory"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(outputDir))
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.BadRequest, "Missing 'output_directory'.");
+            return;
+        }
+
+        // Support transform_id or transform_path_id
+        long? transformId = null;
+        if (jsonNode["transform_id"] is { } idNode && idNode.AsValue().TryGetValue<long>(out var parsedId))
+        {
+            transformId = parsedId;
+        }
+
+        long? transformPathId = null;
+        if (jsonNode["transform_path_id"] is { } pathIdNode && pathIdNode.AsValue().TryGetValue<long>(out var parsedPathId))
+        {
+            transformPathId = parsedPathId;
+        }
+
+        AssetIndexEntry? targetTransform = null;
+        if (transformId.HasValue)
+        {
+            targetTransform = await index.GetByIdAsync(transformId.Value);
+        }
+        else if (transformPathId.HasValue)
+        {
+            // Find in scene roots or index
+            var roots = await _viewModel.GetOrLoadSceneHierarchyAsync();
+            SceneHierarchyNode? FindByTransformPathId(SceneHierarchyNode node)
+            {
+                if (node.TransformEntry.PathId == transformPathId.Value) return node;
+                foreach (var child in node.Children)
+                {
+                    var found = FindByTransformPathId(child);
+                    if (found is not null) return found;
+                }
+                return null;
+            }
+
+            foreach (var root in roots)
+            {
+                var found = FindByTransformPathId(root);
+                if (found is not null)
+                {
+                    targetTransform = found.TransformEntry;
+                    break;
+                }
+            }
+        }
+
+        if (targetTransform is null)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.NotFound, "Target Transform entry not found. Specify a valid 'transform_id' or 'transform_path_id'.");
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(outputDir);
+            var exportResult = await exportService.ExportAsync(targetTransform, outputDir);
+
+            var resultObj = new JsonObject
+            {
+                ["success"] = true,
+                ["transform_id"] = targetTransform.Id,
+                ["transform_name"] = targetTransform.Name,
+                ["output_directory"] = outputDir,
+                ["exported_count"] = exportResult.Files.Count,
+                ["files"] = JsonSerializer.SerializeToNode(exportResult.Files)
+            };
+
+            await SendJsonAsync(context.Response, resultObj);
+        }
+        catch (Exception ex)
+        {
+            await SendErrorAsync(context.Response, HttpStatusCode.InternalServerError, $"Failed to export scene model: {ex.Message}");
+        }
     }
 
     private static async Task SendJsonAsync(HttpListenerResponse response, JsonNode data)
