@@ -126,6 +126,7 @@ jobs:
           pattern: AssetStudioCat-*
           path: artifacts/release
           merge-multiple: true
+          skip-decompress: true
 
       - name: Generate SHA-256 checksums
         working-directory: artifacts/release
