@@ -434,6 +434,24 @@ public sealed class DiskAssetIndex : IAssetIndex
         }
     }
 
+    public async Task<AssetIndexEntry?> GetByIdAsync(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
+        if (id >= 1 && id <= allEntries.Length)
+        {
+            var candidate = allEntries[(int)(id - 1)];
+            if (candidate.Id == id) return candidate;
+        }
+
+        for (var i = 0; i < allEntries.Length; i++)
+        {
+            if (allEntries[i].Id == id) return allEntries[i];
+        }
+        return null;
+    }
+
     public async Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
         CancellationToken cancellationToken = default)
     {

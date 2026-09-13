@@ -20,6 +20,10 @@ public interface IAssetIndex
     Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<AssetIndexEntry?> GetByIdAsync(
+        long id,
+        CancellationToken cancellationToken = default);
+
     Task WarmupAsync(
         CancellationToken cancellationToken = default);
 

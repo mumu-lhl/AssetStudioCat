@@ -44,6 +44,10 @@ public sealed class AppSettings
 
     public string Language { get; set; } = "auto";
 
+    public bool EnableHttpApi { get; set; } = true;
+
+    public int HttpApiPort { get; set; } = 23333;
+
     public List<RecentSource> RecentSources { get; set; } = [];
 
     public AppSettings Normalize(AppDirectories directories)
@@ -56,6 +60,10 @@ public sealed class AppSettings
             128L * 1024 * 1024,
             64L * 1024 * 1024 * 1024);
         FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
+        if (HttpApiPort <= 0 || HttpApiPort > 65535)
+        {
+            HttpApiPort = 23333;
+        }
         Language = string.Equals(Language, "zh-CN", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Language, "zh", StringComparison.OrdinalIgnoreCase)
             ? "zh-CN"

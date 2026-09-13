@@ -8,6 +8,7 @@ using AssetStudio.AppCore.Inspection;
 using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Preview;
 using AssetStudioGUI.Avalonia.Localization;
+using AssetStudioGUI.Avalonia.Services;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -40,10 +41,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly List<AssetRowViewModel> _selectedAssets = [];
     private IReadOnlyList<ContainerHierarchyNode>? _containerHierarchyRoots;
     private IReadOnlyList<string> _sourcePaths = [];
+    private readonly AssetStudioHttpServer? _httpServer;
     private bool _openedAsFileSelection;
     private int _pageOffset;
     private int _pageGeneration;
     private long _totalAssetCount;
+
+    public DiskAssetIndex? CurrentIndex => _currentIndex;
+    public AssetPreviewService? PreviewService => _previewService;
+    public ConvertedAssetExportService? ConvertedExportService => _convertedExportService;
+    public AssetExportService? ExportService => _exportService;
+    public GameObjectExportService? GameObjectExportService => _gameObjectExportService;
+    public long TotalAssetCount => _totalAssetCount;
 
     public MainViewModel()
         : this(CreateDefaultSettings(), AppDirectories.Detect())
@@ -68,6 +77,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AssetInformation = _localizer["NoAssetSelected"];
         DumpText = _localizer["SelectAssetLoadDump"];
         _localizer.PropertyChanged += LocalizerChanged;
+
+        if (settings.EnableHttpApi)
+        {
+            _httpServer = new AssetStudioHttpServer(this, directories, settings.HttpApiPort);
+            _httpServer.Start();
+        }
     }
 
     public AppLocalizer L => _localizer;
@@ -89,6 +104,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public AppSettings Settings { get; }
 
     public bool HasSource => _sourcePaths.Count > 0;
+
+    public string? SourceSummary => _sourcePaths.Count > 0 ? string.Join("; ", _sourcePaths) : null;
 
     public bool CanOpenRecent => Settings.RecentSources.Count > 0;
 
@@ -1137,6 +1154,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _pageCancellation?.Cancel();
         _pageCancellation?.Dispose();
         PreviewImage?.Dispose();
+        _httpServer?.Dispose();
     }
 
     private static AppSettings CreateDefaultSettings()
