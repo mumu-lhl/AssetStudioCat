@@ -23,7 +23,7 @@
   - **Font** : ttf, otf
   - **Mesh** : obj
   - **TextAsset**
-  - **Shader** (for Unity < 2021)
+  - **Shader** : convert to .shader, supported for Unity 5.3 ~ 2022+
   - **MovieTexture**
   - **VideoClip**
   - **MonoBehaviour** : json
@@ -41,6 +41,8 @@
     - Ported from nesrak1's [AssetStudio fork](https://github.com/nesrak1/AssetStudio/tree/switch-tex-deswizzle)
 - Detecting bundles with UnityCN encryption
    - Detection only. If you want to open them, please use Razmoth's [Studio](https://github.com/RazTools/Studio) or Escartem's [AnimeStudio](https://github.com/Escartem/AnimeStudio)
+- Support of Unity >= 2021 Shader deserialization, conversion and preview
+   - Referenced from Escartem's [AnimeStudio](https://github.com/Escartem/AnimeStudio)
 - Some UI optimizations and bug fixes (See [CHANGELOG](https://github.com/aelurum/AssetStudio/blob/AssetStudioMod/CHANGELOG.md) for details)
 
 ## Requirements
@@ -209,3 +211,7 @@ First, use [Il2CppDumper](https://github.com/Perfare/Il2CppDumper) to generate d
 
 ### Oodle compression
 * [zao/ooz](https://github.com/zao/ooz)
+
+### AnimeStudio
+* [Escartem/AnimeStudio](https://github.com/Escartem/AnimeStudio) - Reference for Unity >= 2021 shader structures and subprogram deserialization.
+
