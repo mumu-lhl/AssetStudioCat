@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "assetstudio-cat": {
+      "command": "python3",
+      "args": [
+        "/home/mumulhl/data/AssetStudioCat/mcp/assetstudio_mcp.py"
+      ],
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 90000
+    }
+  }
+}
