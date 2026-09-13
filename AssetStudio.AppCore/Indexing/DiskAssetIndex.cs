@@ -9,13 +9,16 @@ public sealed class DiskAssetIndex : IAssetIndex
 {
     private const int SchemaVersion = 4;
     private const string MetadataFileName = "metadata.json";
+    private const string TypeCountsFileName = "type_counts.json";
     private const string CheckpointFileName = "checkpoint.json";
     private const string RowsFileName = "assets.jsonl";
     private const string OffsetsFileName = "assets.offsets";
+    private const string BinaryFileName = "assets.bin";
     private readonly string _sourcePath;
     private readonly string _indexRoot;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private volatile AssetIndexEntry[]? _cachedEntries;
+    private volatile IndexMetadata? _cachedMetadata;
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     private static readonly byte[] s_newline = "\n"u8.ToArray();
@@ -47,6 +50,7 @@ public sealed class DiskAssetIndex : IAssetIndex
             var offsetsPath = Path.Combine(staging, OffsetsFileName);
             long count = 0;
             var cached = new List<AssetIndexEntry>();
+            var typeCounts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
             await using (var rows = new FileStream(rowsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024))
             await using (var offsets = new FileStream(offsetsPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024))
@@ -62,6 +66,8 @@ public sealed class DiskAssetIndex : IAssetIndex
                     jsonWriter.Flush();
                     jsonWriter.Reset(rows);
                     rows.Write(s_newline);
+                    typeCounts.TryGetValue(entry.TypeName, out var prev);
+                    typeCounts[entry.TypeName] = prev + 1;
                     count++;
                 }
 
@@ -77,20 +83,30 @@ public sealed class DiskAssetIndex : IAssetIndex
                     count,
                     new Dictionary<string, IndexedFileInfo>(StringComparer.OrdinalIgnoreCase),
                     new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    typeCounts);
                 await using (var cpStream = File.Create(Path.Combine(staging, CheckpointFileName)))
                 {
                     await JsonSerializer.SerializeAsync(cpStream, checkpoint, _jsonOptions, cancellationToken);
                 }
             }
 
-            var metadata = new IndexMetadata(SchemaVersion, fingerprint, count, DateTimeOffset.UtcNow);
+            var metadata = new IndexMetadata(SchemaVersion, fingerprint, count, DateTimeOffset.UtcNow, typeCounts);
             await using (var metadataStream = File.Create(Path.Combine(staging, MetadataFileName)))
             {
                 await JsonSerializer.SerializeAsync(metadataStream, metadata, _jsonOptions, cancellationToken);
             }
 
+            await using (var tcStream = File.Create(Path.Combine(staging, TypeCountsFileName)))
+            {
+                await JsonSerializer.SerializeAsync(tcStream, typeCounts, _jsonOptions, cancellationToken);
+            }
+
+            var binaryStagingPath = Path.Combine(staging, BinaryFileName);
+            await AssetIndexBinaryStorage.SaveAsync(binaryStagingPath, cached, cancellationToken);
+
             Promote(staging);
+            _cachedMetadata = metadata;
             _cachedEntries = cached.ToArray();
         }
         catch
@@ -109,6 +125,7 @@ public sealed class DiskAssetIndex : IAssetIndex
         {
             await using var stream = File.OpenRead(Path.Combine(_indexRoot, MetadataFileName));
             var metadata = await JsonSerializer.DeserializeAsync<IndexMetadata>(stream, _jsonOptions, cancellationToken);
+            _cachedMetadata = metadata;
             return metadata is { SchemaVersion: SchemaVersion } && metadata.Fingerprint == fingerprint
                 && File.Exists(Path.Combine(_indexRoot, RowsFileName))
                 && File.Exists(Path.Combine(_indexRoot, OffsetsFileName));
@@ -224,11 +241,30 @@ public sealed class DiskAssetIndex : IAssetIndex
     public async Task<AssetIndexPage> QueryAsync(AssetIndexQuery query, CancellationToken cancellationToken = default)
     {
         query = query.Normalize();
-        var allEntries = await EnsureLoadedAsync(cancellationToken);
 
         var typeName = query.TypeName;
         var containerPath = query.ContainerPath;
         var searchText = query.SearchText;
+        var hasFilter = typeName is not null || containerPath is not null || searchText is not null;
+
+        // Fast-path: When entries are not yet loaded into memory and there are no search/container/type filters,
+        // read directly by offset. This allows GUI to open and render the first page in under 5ms.
+        if (_cachedEntries is null && !hasFilter && query.SortField == AssetSortField.IndexOrder && !query.SortDescending)
+        {
+            var metadata = _cachedMetadata ?? await ReadMetadataAsync(cancellationToken);
+            var total = metadata.EntryCount;
+            if (query.Offset >= total)
+            {
+                return new AssetIndexPage([], query.Offset, null, total);
+            }
+            var count = (int)Math.Min((long)query.Limit, total - query.Offset);
+            var pagedItems = await ReadEntriesByOffsetsAsync(query.Offset, count, cancellationToken);
+            int? nextOffset = query.Offset + pagedItems.Length < total ? query.Offset + pagedItems.Length : null;
+            return new AssetIndexPage(pagedItems, query.Offset, nextOffset, total);
+        }
+
+        var allEntries = await EnsureLoadedAsync(cancellationToken);
+
         var isNoContainer = containerPath == "(No Container)";
         var normQuery = containerPath is not null && !isNoContainer
             ? containerPath.Replace('\\', '/').Trim('/')
@@ -285,8 +321,6 @@ public sealed class DiskAssetIndex : IAssetIndex
             }
             return true;
         }
-
-        var hasFilter = typeName is not null || containerPath is not null || searchText is not null;
 
         if (query.SortField == AssetSortField.IndexOrder)
         {
@@ -403,6 +437,40 @@ public sealed class DiskAssetIndex : IAssetIndex
     public async Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
         CancellationToken cancellationToken = default)
     {
+        if (_cachedMetadata?.TypeCounts is { Count: > 0 } metaCounts)
+        {
+            return metaCounts;
+        }
+
+        var metadata = _cachedMetadata ?? await ReadMetadataAsync(cancellationToken);
+        if (metadata.TypeCounts is { Count: > 0 } diskCounts)
+        {
+            _cachedMetadata = metadata;
+            return diskCounts;
+        }
+
+        var typeCountsPath = Path.Combine(_indexRoot, TypeCountsFileName);
+        if (File.Exists(typeCountsPath))
+        {
+            try
+            {
+                await using var stream = File.OpenRead(typeCountsPath);
+                var loaded = await JsonSerializer.DeserializeAsync<Dictionary<string, long>>(stream, _jsonOptions, cancellationToken);
+                if (loaded is { Count: > 0 })
+                {
+                    if (_cachedMetadata is not null)
+                    {
+                        _cachedMetadata = _cachedMetadata with { TypeCounts = loaded };
+                    }
+                    return loaded;
+                }
+            }
+            catch
+            {
+                // Fallback to loading
+            }
+        }
+
         var allEntries = await EnsureLoadedAsync(cancellationToken);
         var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < allEntries.Length; i++)
@@ -411,16 +479,117 @@ public sealed class DiskAssetIndex : IAssetIndex
             counts.TryGetValue(type, out var count);
             counts[type] = count + 1;
         }
+
+        await SaveTypeCountsAsync(counts, cancellationToken);
         return counts;
+    }
+
+    private async Task SaveTypeCountsAsync(
+        Dictionary<string, long> counts,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var typeCountsPath = Path.Combine(_indexRoot, TypeCountsFileName);
+            var tmpTypeCounts = typeCountsPath + ".tmp";
+            await using (var stream = File.Create(tmpTypeCounts))
+            {
+                await JsonSerializer.SerializeAsync(stream, counts, _jsonOptions, cancellationToken);
+            }
+            File.Move(tmpTypeCounts, typeCountsPath, overwrite: true);
+
+            if (_cachedMetadata is not null)
+            {
+                _cachedMetadata = _cachedMetadata with { TypeCounts = counts };
+                var metadataPath = Path.Combine(_indexRoot, MetadataFileName);
+                var tmpMeta = metadataPath + ".tmp";
+                await using (var metaStream = File.Create(tmpMeta))
+                {
+                    await JsonSerializer.SerializeAsync(metaStream, _cachedMetadata, _jsonOptions, cancellationToken);
+                }
+                File.Move(tmpMeta, metadataPath, overwrite: true);
+            }
+        }
+        catch
+        {
+            // Persistence of cache is best-effort
+        }
     }
 
     public void Rebuild()
     {
         _cachedEntries = null;
+        _cachedMetadata = null;
         if (System.IO.Directory.Exists(_indexRoot))
         {
             System.IO.Directory.Delete(_indexRoot, true);
         }
+    }
+
+    public Task WarmupAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.Run(async () =>
+        {
+            try
+            {
+                await EnsureLoadedAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                // Background warmup error shouldn't crash
+            }
+        }, cancellationToken);
+    }
+
+    private async Task<AssetIndexEntry[]> ReadEntriesByOffsetsAsync(
+        int offset,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        var offsetsPath = Path.Combine(_indexRoot, OffsetsFileName);
+        var rowsPath = Path.Combine(_indexRoot, RowsFileName);
+        if (!File.Exists(offsetsPath) || !File.Exists(rowsPath) || count <= 0)
+        {
+            return [];
+        }
+
+        long firstRowOffset;
+        await using (var offsetsStream = new FileStream(offsetsPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+        {
+            if ((long)offset * 8 + 8 > offsetsStream.Length)
+            {
+                return [];
+            }
+            offsetsStream.Seek((long)offset * 8, SeekOrigin.Begin);
+            var offsetBuf = new byte[8];
+            var read = await offsetsStream.ReadAsync(offsetBuf.AsMemory(0, 8), cancellationToken);
+            if (read < 8) return [];
+            firstRowOffset = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(offsetBuf);
+        }
+
+        var list = new List<AssetIndexEntry>(count);
+        await using (var rowsStream = new FileStream(rowsPath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, useAsync: true))
+        {
+            rowsStream.Seek(firstRowOffset, SeekOrigin.Begin);
+            using var reader = new StreamReader(rowsStream, Encoding.UTF8, false, 64 * 1024);
+            for (var i = 0; i < count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var line = await reader.ReadLineAsync(cancellationToken);
+                if (line is null) break;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                var entry = JsonSerializer.Deserialize<AssetIndexEntry>(line, _jsonOptions);
+                if (entry is not null)
+                {
+                    list.Add(entry);
+                }
+            }
+        }
+
+        return list.ToArray();
     }
 
     private async Task<AssetIndexEntry[]> EnsureLoadedAsync(CancellationToken cancellationToken)
@@ -438,13 +607,27 @@ public sealed class DiskAssetIndex : IAssetIndex
                 return lockedExisting;
             }
 
+            var metadata = _cachedMetadata ?? await ReadMetadataAsync(cancellationToken);
+            var binaryPath = Path.Combine(_indexRoot, BinaryFileName);
+
+            if (File.Exists(binaryPath))
+            {
+                var binaryEntries = await AssetIndexBinaryStorage.TryLoadAsync(binaryPath, metadata.EntryCount, cancellationToken);
+                if (binaryEntries is not null)
+                {
+                    _cachedEntries = binaryEntries;
+                    return binaryEntries;
+                }
+            }
+
             var rowsPath = Path.Combine(_indexRoot, RowsFileName);
             if (!File.Exists(rowsPath))
             {
                 return [];
             }
 
-            var list = new List<AssetIndexEntry>();
+            var initialCapacity = (int)Math.Min((long)int.MaxValue, Math.Max(16, metadata.EntryCount));
+            var list = new List<AssetIndexEntry>(initialCapacity);
             var stringPool = new Dictionary<string, string>(StringComparer.Ordinal);
             string Intern(string s)
             {
@@ -476,6 +659,31 @@ public sealed class DiskAssetIndex : IAssetIndex
 
             var result = list.ToArray();
             _cachedEntries = result;
+
+            if (_cachedMetadata?.TypeCounts is null)
+            {
+                var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < result.Length; i++)
+                {
+                    var type = result[i].TypeName;
+                    counts.TryGetValue(type, out var c);
+                    counts[type] = c + 1;
+                }
+                _ = SaveTypeCountsAsync(counts, CancellationToken.None);
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await AssetIndexBinaryStorage.SaveAsync(binaryPath, result, CancellationToken.None);
+                }
+                catch
+                {
+                    // Best-effort cache save
+                }
+            });
+
             return result;
         }
         finally
@@ -531,9 +739,15 @@ public sealed class DiskAssetIndex : IAssetIndex
 
     private async Task<IndexMetadata> ReadMetadataAsync(CancellationToken cancellationToken)
     {
+        if (_cachedMetadata is not null)
+        {
+            return _cachedMetadata;
+        }
         await using var stream = File.OpenRead(Path.Combine(_indexRoot, MetadataFileName));
-        return await JsonSerializer.DeserializeAsync<IndexMetadata>(stream, _jsonOptions, cancellationToken)
+        var metadata = await JsonSerializer.DeserializeAsync<IndexMetadata>(stream, _jsonOptions, cancellationToken)
             ?? throw new InvalidDataException("Asset index metadata is empty.");
+        _cachedMetadata = metadata;
+        return metadata;
     }
 
     private void Promote(string staging)
@@ -569,7 +783,8 @@ public sealed class DiskAssetIndex : IAssetIndex
         int SchemaVersion,
         AssetSourceFingerprint Fingerprint,
         long EntryCount,
-        DateTimeOffset CreatedAt);
+        DateTimeOffset CreatedAt,
+        IReadOnlyDictionary<string, long>? TypeCounts = null);
 
     private sealed class AssetEntryComparer(AssetSortField field, bool descending) : IComparer<AssetIndexEntry>
     {
@@ -609,6 +824,7 @@ public sealed class DiskAssetIndex : IAssetIndex
         private readonly BinaryWriter _offsetsWriter;
         private readonly Utf8JsonWriter _jsonWriter;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly Dictionary<string, long> _typeCounts;
         private IndexCheckpoint _checkpoint;
         private long _entryCount;
         private bool _disposed;
@@ -627,6 +843,9 @@ public sealed class DiskAssetIndex : IAssetIndex
             _offsetsWriter = new BinaryWriter(_offsetsStream, Encoding.UTF8, leaveOpen: true);
             _jsonWriter = new Utf8JsonWriter(_rowsStream);
             _checkpoint = checkpoint;
+            _typeCounts = checkpoint.TypeCounts is not null
+                ? new Dictionary<string, long>(checkpoint.TypeCounts, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             _entryCount = entryCount;
             _jsonOptions = jsonOptions;
         }
@@ -641,6 +860,8 @@ public sealed class DiskAssetIndex : IAssetIndex
             _jsonWriter.Flush();
             _jsonWriter.Reset(_rowsStream);
             _rowsStream.Write(s_newline);
+            _typeCounts.TryGetValue(entry.TypeName, out var currentCount);
+            _typeCounts[entry.TypeName] = currentCount + 1;
             _entryCount++;
         }
 
@@ -667,6 +888,7 @@ public sealed class DiskAssetIndex : IAssetIndex
                 RowsFileLength = _rowsStream.Position,
                 OffsetsFileLength = _offsetsStream.Position,
                 EntryCount = _entryCount,
+                TypeCounts = new Dictionary<string, long>(_typeCounts, StringComparer.OrdinalIgnoreCase),
                 UpdatedAt = DateTimeOffset.UtcNow
             };
 
@@ -692,6 +914,7 @@ public sealed class DiskAssetIndex : IAssetIndex
                 RowsFileLength = _rowsStream.Position,
                 OffsetsFileLength = _offsetsStream.Position,
                 EntryCount = _entryCount,
+                TypeCounts = new Dictionary<string, long>(_typeCounts, StringComparer.OrdinalIgnoreCase),
                 UpdatedAt = DateTimeOffset.UtcNow
             };
             var checkpointPath = Path.Combine(_index.DirectoryPath, CheckpointFileName);
@@ -702,7 +925,7 @@ public sealed class DiskAssetIndex : IAssetIndex
             }
             File.Move(tmpCheckpointPath, checkpointPath, overwrite: true);
 
-            var metadata = new IndexMetadata(SchemaVersion, fingerprint, _entryCount, DateTimeOffset.UtcNow);
+            var metadata = new IndexMetadata(SchemaVersion, fingerprint, _entryCount, DateTimeOffset.UtcNow, _typeCounts);
             var metadataPath = Path.Combine(_index.DirectoryPath, MetadataFileName);
             var tmpMetadataPath = metadataPath + ".tmp";
             await using (var metadataStream = File.Create(tmpMetadataPath))
@@ -711,6 +934,15 @@ public sealed class DiskAssetIndex : IAssetIndex
             }
             File.Move(tmpMetadataPath, metadataPath, overwrite: true);
 
+            var typeCountsPath = Path.Combine(_index.DirectoryPath, TypeCountsFileName);
+            var tmpTypeCountsPath = typeCountsPath + ".tmp";
+            await using (var tcStream = File.Create(tmpTypeCountsPath))
+            {
+                await JsonSerializer.SerializeAsync(tcStream, _typeCounts, _jsonOptions, cancellationToken);
+            }
+            File.Move(tmpTypeCountsPath, typeCountsPath, overwrite: true);
+
+            _index._cachedMetadata = metadata;
             _index._cachedEntries = null;
         }
 
@@ -741,7 +973,8 @@ public sealed record IndexCheckpoint(
     long EntryCount,
     Dictionary<string, IndexedFileInfo> IndexedFiles,
     Dictionary<string, string> Containers,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Dictionary<string, long>? TypeCounts = null);
 
 public sealed record IndexedFileInfo(
     long Length,

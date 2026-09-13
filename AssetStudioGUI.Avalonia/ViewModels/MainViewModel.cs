@@ -392,6 +392,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _totalAssetCount = result.AssetCount;
             _pageOffset = 0;
             await LoadPageAsync(0, cancellationToken);
+            _ = _currentIndex.WarmupAsync(cancellationToken);
             _ = BuildContainerTreeAsync(cancellationToken);
             await RememberSourceAsync(_sourcePaths, fileSelection, cancellationToken);
             StatusText = result.ReusedExistingIndex

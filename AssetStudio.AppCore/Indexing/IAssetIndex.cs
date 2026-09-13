@@ -17,5 +17,11 @@ public interface IAssetIndex
         AssetIndexQuery query,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyDictionary<string, long>> GetTypeCountsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task WarmupAsync(
+        CancellationToken cancellationToken = default);
+
     void Rebuild();
 }

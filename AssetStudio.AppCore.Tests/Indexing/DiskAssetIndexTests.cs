@@ -340,6 +340,47 @@ public sealed class DiskAssetIndexTests : IDisposable
         Assert.Equal("asset-b", page.Items[1].Name);
     }
 
+    [Fact]
+    public async Task GetTypeCountsAndFirstPageUseMetadataAndOffsetFastPath()
+    {
+        var source = CreateSourceDirectory();
+        var fingerprint = AssetSourceFingerprint.Create(source);
+        var indexesDir = Path.Combine(_root, "indexes");
+        var index1 = new DiskAssetIndex(indexesDir, source);
+        await index1.BuildAsync(fingerprint, Entries(500));
+
+        // Create a completely fresh DiskAssetIndex instance (no in-memory cache)
+        var index2 = new DiskAssetIndex(indexesDir, source);
+        Assert.True(await index2.IsCurrentAsync(fingerprint));
+
+        // 1. Type counts should return from metadata / type_counts.json without loading all rows
+        var typeCounts = await index2.GetTypeCountsAsync();
+        Assert.Equal(250, typeCounts["Texture2D"]);
+        Assert.Equal(250, typeCounts["TextAsset"]);
+
+        // 2. Unfiltered first page query should return via fast-path offsets
+        var page = await index2.QueryAsync(new AssetIndexQuery(Offset: 0, Limit: 50));
+        Assert.Equal(500, page.TotalCount);
+        Assert.Equal(50, page.Items.Count);
+        Assert.Equal(50, page.NextOffset);
+        Assert.Equal(0, page.Items[0].Id);
+        Assert.Equal(49, page.Items[^1].Id);
+
+        // 3. Second page offset query should also work via fast-path
+        var page2 = await index2.QueryAsync(new AssetIndexQuery(Offset: 50, Limit: 50));
+        Assert.Equal(500, page2.TotalCount);
+        Assert.Equal(50, page2.Items.Count);
+        Assert.Equal(100, page2.NextOffset);
+        Assert.Equal(50, page2.Items[0].Id);
+        Assert.Equal(99, page2.Items[^1].Id);
+
+        // 4. Filtered query should load entries and filter correctly
+        var filteredPage = await index2.QueryAsync(new AssetIndexQuery(Limit: 50, TypeName: "Texture2D"));
+        Assert.Equal(250, filteredPage.TotalCount);
+        Assert.Equal(50, filteredPage.Items.Count);
+        Assert.All(filteredPage.Items, item => Assert.Equal("Texture2D", item.TypeName));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
