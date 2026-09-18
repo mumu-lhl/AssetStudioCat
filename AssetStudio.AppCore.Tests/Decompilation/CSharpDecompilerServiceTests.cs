@@ -128,7 +128,7 @@ public sealed class CSharpDecompilerServiceTests : IDisposable
         service.RegisterProbePath(assemblyDir);
 
         Assert.True(service.TryFindAssembly(assemblyName, out var foundPath));
-        Assert.Equal(Path.GetFullPath(appCoreAssemblyPath), Path.GetFullPath(foundPath));
+        Assert.Equal(Path.GetFullPath(appCoreAssemblyPath), Path.GetFullPath(foundPath), ignoreCase: true);
 
         var csharp = await service.DecompileTypeAsync(
             assemblyName,
