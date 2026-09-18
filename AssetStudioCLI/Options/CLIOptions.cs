@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -76,6 +76,13 @@ namespace AssetStudioCLI.Options
         All,
     }
 
+    internal enum ModelFormat
+    {
+        Fbx,
+        Glb,
+        Gltf,
+    }
+
     internal static class CLIOptions
     {
         public static bool isParsed;
@@ -107,11 +114,15 @@ namespace AssetStudioCLI.Options
         public static Option<bool> f_l2dAssetSearchByFilename;
         public static Option<CubismLive2DExtractor.Live2DMotionMode> o_l2dMotionMode;
         public static Option<bool> f_l2dForceBezier;
-        //fbx
+        //model / fbx / gltf
+        public static Option<ModelFormat> o_modelFormat;
         public static Option<float> o_fbxScaleFactor;
         public static Option<int> o_fbxBoneSize;
         public static Option<AnimationExportMode> o_fbxAnimMode;
         public static Option<bool> f_fbxUvsAsDiffuseMaps;
+        public static Option<float> o_gltfScaleFactor;
+        public static Option<bool> f_exportGlb;
+        public static Option<bool> f_exportGltf;
         //filter
         public static Option<List<string>> o_filterByName;
         public static Option<List<string>> o_filterByContainer;
@@ -370,7 +381,16 @@ namespace AssetStudioCLI.Options
             );
             #endregion
 
-            #region Init FBX Options
+            #region Init FBX / Model Options
+            o_modelFormat = new GroupedOption<ModelFormat>
+            (
+                optionDefaultValue: ModelFormat.Fbx,
+                optionName: "-mf, --model-format <format>",
+                optionDescription: "Specify model export format for Animator and SplitObjects modes\n" +
+                    "<Value: fbx(default) | glb | gltf>\n",
+                optionExample: "Example: \"--model-format glb\" or \"-mf gltf\"\n",
+                optionHelpGroup: HelpGroups.FBX
+            );
             o_fbxScaleFactor = new GroupedOption<float>
             (
                 optionDefaultValue: 1f,
@@ -393,7 +413,7 @@ namespace AssetStudioCLI.Options
             (
                 optionDefaultValue: AnimationExportMode.Auto,
                 optionName: "--fbx-animation",
-                optionDescription: "Specify the FBX animation export mode\n" + 
+                optionDescription: "Specify the model / FBX animation export mode\n" + 
                     "<Value: auto(default) | skip | all>\n" +
                     "Auto - Search for model-related animations and export model with them\n" +
                     "Skip - Don't export animations\n" +
@@ -410,6 +430,33 @@ namespace AssetStudioCLI.Options
                     "(But can also cause some bugs with UVs)",
                 optionExample: "",
                 optionHelpGroup: HelpGroups.FBX
+            );
+            o_gltfScaleFactor = new GroupedOption<float>
+            (
+                optionDefaultValue: 1f,
+                optionName: "--gltf-scale-factor <value>",
+                optionDescription: "Specify the glTF / GLB Scale Factor\n" +
+                    "<Value: float number from 0.0001 to 10000 (default=1)>\n",
+                optionExample: "Example: \"--gltf-scale-factor 1.0\"\n",
+                optionHelpGroup: HelpGroups.FBX
+            );
+            f_exportGlb = new GroupedOption<bool>
+            (
+                optionDefaultValue: false,
+                optionName: "--glb",
+                optionDescription: "(Flag) If specified, exports models in binary glTF (.glb) format\n",
+                optionExample: "",
+                optionHelpGroup: HelpGroups.FBX,
+                isFlag: true
+            );
+            f_exportGltf = new GroupedOption<bool>
+            (
+                optionDefaultValue: false,
+                optionName: "--gltf",
+                optionDescription: "(Flag) If specified, exports models in glTF (.gltf) format\n",
+                optionExample: "",
+                optionHelpGroup: HelpGroups.FBX,
+                isFlag: true
             );
             #endregion
 
@@ -733,6 +780,28 @@ namespace AssetStudioCLI.Options
                             return;
                         }
                         f_fbxUvsAsDiffuseMaps.Value = true;
+                        flagIndexes.Add(i);
+                        break;
+                    case "--glb":
+                        if (o_workMode.Value != WorkMode.SplitObjects && o_workMode.Value != WorkMode.Animator)
+                        {
+                            Console.WriteLine($"{"Error".Color(brightRed)} during parsing [{flag.Color(brightYellow)}] flag. This flag is not suitable for the current working mode [{o_workMode.Value}].\n");
+                            ShowOptionDescription(o_workMode);
+                            return;
+                        }
+                        o_modelFormat.Value = ModelFormat.Glb;
+                        f_exportGlb.Value = true;
+                        flagIndexes.Add(i);
+                        break;
+                    case "--gltf":
+                        if (o_workMode.Value != WorkMode.SplitObjects && o_workMode.Value != WorkMode.Animator)
+                        {
+                            Console.WriteLine($"{"Error".Color(brightRed)} during parsing [{flag.Color(brightYellow)}] flag. This flag is not suitable for the current working mode [{o_workMode.Value}].\n");
+                            ShowOptionDescription(o_workMode);
+                            return;
+                        }
+                        o_modelFormat.Value = ModelFormat.Gltf;
+                        f_exportGltf.Value = true;
                         flagIndexes.Add(i);
                         break;
                     case "--filter-with-regex":
@@ -1066,6 +1135,50 @@ namespace AssetStudioCLI.Options
                                     return;
                             }
                             break;
+                        case "-mf":
+                        case "--model-format":
+                            if (o_workMode.Value != WorkMode.SplitObjects && o_workMode.Value != WorkMode.Animator)
+                            {
+                                i++;
+                                continue;
+                            }
+                            switch (value.ToLower())
+                            {
+                                case "fbx":
+                                    o_modelFormat.Value = ModelFormat.Fbx;
+                                    break;
+                                case "glb":
+                                    o_modelFormat.Value = ModelFormat.Glb;
+                                    break;
+                                case "gltf":
+                                    o_modelFormat.Value = ModelFormat.Gltf;
+                                    break;
+                                default:
+                                    Console.WriteLine($"{"Error".Color(brightRed)} during parsing [{option.Color(brightYellow)}] option. Unsupported model format: [{value.Color(brightRed)}].\n");
+                                    ShowOptionDescription(o_modelFormat);
+                                    return;
+                            }
+                            break;
+                        case "--gltf-scale-factor":
+                        {
+                            if (o_workMode.Value != WorkMode.SplitObjects && o_workMode.Value != WorkMode.Animator)
+                            {
+                                i++;
+                                continue;
+                            }
+                            var isFloat = float.TryParse(value, out var floatValue);
+                            if (isFloat && floatValue >= 0.0001f && floatValue <= 10000f)
+                            {
+                                o_gltfScaleFactor.Value = floatValue;
+                            }
+                            else
+                            {
+                                Console.WriteLine($"{"Error".Color(brightRed)} during parsing [{option.Color(brightYellow)}] option. Unsupported glTF scale factor value: [{value.Color(brightRed)}].\n");
+                                ShowOptionDescription(o_gltfScaleFactor);
+                                return;
+                            }
+                            break;
+                        }
                         case "--fbx-scale-factor":
                         {
                             var isFloat = float.TryParse(value, out var floatValue);
@@ -1477,10 +1590,19 @@ namespace AssetStudioCLI.Options
                         : $"# Filter by Name(s): \"{string.Join("\", \"", o_filterByName.Value)}\"");
                     sb.AppendLine($"# Filter With Regex: {f_filterWithRegex}");
                     sb.AppendLine($"# Export Image Format: {o_imageFormat}");
-                    sb.AppendLine($"# FBX Scale Factor: {o_fbxScaleFactor}");
-                    sb.AppendLine($"# FBX Bone Size: {o_fbxBoneSize}");
-                    sb.AppendLine($"# FBX Animation Mode: {o_fbxAnimMode}");
-                    sb.AppendLine($"# FBX UVs as Diffuse Maps: {f_fbxUvsAsDiffuseMaps}");
+                    sb.AppendLine($"# Model Format: {o_modelFormat}");
+                    if (o_modelFormat.Value == ModelFormat.Fbx)
+                    {
+                        sb.AppendLine($"# FBX Scale Factor: {o_fbxScaleFactor}");
+                        sb.AppendLine($"# FBX Bone Size: {o_fbxBoneSize}");
+                        sb.AppendLine($"# FBX Animation Mode: {o_fbxAnimMode}");
+                        sb.AppendLine($"# FBX UVs as Diffuse Maps: {f_fbxUvsAsDiffuseMaps}");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"# glTF Scale Factor: {o_gltfScaleFactor}");
+                        sb.AppendLine($"# glTF Animation Mode: {o_fbxAnimMode}");
+                    }
                     break;
             }
             sb.AppendLine("======");

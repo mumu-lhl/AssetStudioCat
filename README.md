@@ -27,11 +27,12 @@
   - **MovieTexture**
   - **VideoClip**
   - **MonoBehaviour** : json
-  - **Animator** : export to FBX file with bound AnimationClip
+  - **Animator** : export to FBX or glTF / GLB file with bound AnimationClip
  
 ## AssetStudioMod Features
 
 - CLI version (for Windows, Linux, Mac)
+- Support of glTF 2.0 and binary GLB (.glb) export for Animator and scene hierarchy models (pure managed C# via SharpGLTF)
 - Support of sprites with alpha mask
 - Support of image export in WebP format
 - Support of Live2D Cubism model export
@@ -99,14 +100,17 @@ AssetStudioModCLI <asset folder path> -m dump -o <output folder path>
 AssetStudioModCLI <asset folder path> -m live2d
 ```
 > When running in live2d mode, the only filter option supported is `--filter-by-name`.
-- Export all FBX objects (similar to "Export all objects (split)" option in the GUI)
+- Export all objects (split) as FBX or glTF / GLB (similar to "Export all objects (split)" option in the GUI)
 ```
 AssetStudioModCLI <asset folder path> -m splitObjects
+AssetStudioModCLI <asset folder path> -m splitObjects --glb
 ```
 > When running in splitObjects mode, the only filter option supported is `--filter-by-name`.
-- Export Animator assets
+- Export Animator assets as FBX, GLB or glTF
 ```
 AssetStudioModCLI <asset folder path> -m animator
+AssetStudioModCLI <asset folder path> -m animator --glb
+AssetStudioModCLI <asset folder path> -m animator --gltf
 ```
 
 ### Advanced Samples

@@ -23,6 +23,61 @@ public sealed class GameObjectExportService
         CancellationToken cancellationToken = default) =>
         Task.Run(() => Export(transformEntry, outputDirectory, cancellationToken), cancellationToken);
 
+    public Task<AssetExportResult> ExportGltfAsync(
+        AssetIndexEntry transformEntry,
+        string outputDirectory,
+        Gltf.Format? format = null,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ExportGltf(transformEntry, outputDirectory, format, cancellationToken), cancellationToken);
+
+    private AssetExportResult ExportGltf(
+        AssetIndexEntry transformEntry,
+        string outputDirectory,
+        Gltf.Format? format,
+        CancellationToken cancellationToken)
+    {
+        if (transformEntry.TypeName is not "Transform" and not "RectTransform")
+        {
+            throw new NotSupportedException("Scene glTF export requires a Transform or RectTransform index entry.");
+        }
+
+        using var session = _objectLoader.OpenDependencyGraphAsync(transformEntry, cancellationToken).GetAwaiter().GetResult();
+        if (session.Asset is not Transform transform || !transform.m_GameObject.TryGet(out var gameObject))
+        {
+            throw new InvalidDataException("The selected scene node's GameObject could not be resolved.");
+        }
+
+        var root = Path.GetFullPath(outputDirectory);
+        Directory.CreateDirectory(root);
+        var safeName = MakeSafeFileName(gameObject.m_Name);
+        var finalDirectory = GetAvailableDirectory(root, safeName, transformEntry.PathId);
+        var temporaryDirectory = Path.Combine(root, $".{safeName}.{Guid.NewGuid():N}.tmp");
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            var exportFormat = format ?? _settings.GltfFormat;
+            var ext = Gltf.Settings.GetFileExtension(exportFormat);
+            var gltfPath = Path.Combine(temporaryDirectory, safeName + ext);
+            var converter = new ModelConverter(gameObject, ToImageFormat(_settings.ConvertedImageFormat));
+            var gltfSettings = new Gltf.Settings
+            {
+                ExportFormat = exportFormat,
+                ExportAnimations = _settings.GltfExportAnimations,
+                ExportSkins = _settings.GltfExportSkins,
+                ExportBlendShapes = _settings.GltfExportBlendShapes,
+                ScaleFactor = (float)_settings.GltfScaleFactor,
+            };
+            ModelExporter.ExportGltf(gltfPath, converter, gltfSettings);
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.Move(temporaryDirectory, finalDirectory);
+            return new AssetExportResult(Directory.GetFiles(finalDirectory, "*", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory)) Directory.Delete(temporaryDirectory, true);
+        }
+    }
+
     private AssetExportResult Export(
         AssetIndexEntry transformEntry,
         string outputDirectory,

@@ -5,6 +5,7 @@ CLI version of AssetStudioMod.
 ### Usage
 ```
 AssetStudioModCLI <input path to asset file(s)/folder> [-m, --mode <value>]
+                      [-mf, --model-format <value>] [--glb] [--gltf]
                       [-t, --asset-type <value(s)>] [-g, --group-option <value>]
                       [-f, --filename-format <value>] [-o, --output <path>]
                       [-r, --overwrite-existing] [-h, --help]
@@ -14,6 +15,7 @@ AssetStudioModCLI <input path to asset file(s)/folder> [-m, --mode <value>]
                       [--l2d-search-by-filename] [--l2d-force-bezier]
                       [--fbx-scale-factor <value>] [--fbx-bone-size <value>]
                       [--fbx-animation] [--fbx-uvs-as-diffuse]
+                      [--gltf-scale-factor <value>]
                       [--filter-by-name <text>] [--filter-by-container <text>]
                       [--filter-by-pathid <text>] [--filter-by-text <text>]
                       [--filter-with-regex] [--blockinfo-comp <value>]
@@ -33,8 +35,8 @@ General Options:
                                 Dump - Generate json dumps of loaded asset
                                 Info - Load file(s) and show the number of available for export assets
                                 Live2D - Export Live2D Cubism models
-                                SplitObjects - Export all model objects (split) (fbx)
-                                Animator - Export Animator assets (fbx)
+                                SplitObjects - Export all model objects (split) (fbx, glb, gltf)
+                                Animator - Export Animator assets (fbx, glb, gltf)
                                 Example: "-m info"
 
   -t, --asset-type <value(s)>   Specify asset type(s) to export
@@ -111,7 +113,19 @@ Live2D Options:
   --l2d-force-bezier            (Flag) If specified, Linear motion segments will be calculated as Bezier segments
                                 (May help if the exported motions look jerky/not smooth enough)
 
-FBX Options:
+Model / FBX / glTF Options:
+  -mf, --model-format <value>   Specify model export format for Animator and SplitObjects modes
+                                <Value: fbx(default) | glb | gltf>
+                                Example: "-mf glb" or "--model-format gltf"
+
+  --glb                         (Flag) If specified, exports models in binary glTF (.glb) format
+
+  --gltf                        (Flag) If specified, exports models in standard glTF (.gltf) format
+
+  --gltf-scale-factor <value>   Specify the glTF / GLB Scale Factor
+                                <Value: float number from 0.0001 to 10000 (default=1)>
+                                Example: "--gltf-scale-factor 1.0"
+
   --fbx-scale-factor <value>    Specify the FBX Scale Factor
                                 <Value: float number from 0 to 100 (default=1)>
                                 Example: "--fbx-scale-factor 50"
@@ -120,7 +134,7 @@ FBX Options:
                                 <Value: integer number from 0 to 100 (default=10)>
                                 Example: "--fbx-bone-size 10"
 
-  --fbx-animation               Specify the FBX animation export mode
+  --fbx-animation               Specify the model / FBX animation export mode
                                 <Value: auto(default) | skip | all>
                                 Auto - Search for model-related animations and export model with them
                                 Skip - Don't export animations

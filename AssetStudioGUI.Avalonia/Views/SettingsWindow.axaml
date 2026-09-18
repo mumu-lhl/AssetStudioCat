@@ -66,6 +66,17 @@
         </WrapPanel>
         <TextBlock FontWeight="SemiBold" Text="{Binding L[FbxScaleFactor]}" />
         <NumericUpDown Minimum="0.0001" Maximum="10000" Increment="0.1" Value="{Binding FbxScaleFactor}" />
+
+        <TextBlock Margin="0,18,0,0" FontSize="20" FontWeight="SemiBold" Text="{Binding L[GltfExport]}" />
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[GltfFormat]}" />
+        <ComboBox ItemsSource="{Binding GltfFormats}" SelectedItem="{Binding SelectedGltfFormat}" />
+        <WrapPanel Orientation="Horizontal">
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[Animations]}" IsChecked="{Binding GltfExportAnimations}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[Skins]}" IsChecked="{Binding GltfExportSkins}" />
+          <CheckBox Margin="0,0,16,6" Content="{Binding L[BlendShapes]}" IsChecked="{Binding GltfExportBlendShapes}" />
+        </WrapPanel>
+        <TextBlock FontWeight="SemiBold" Text="{Binding L[GltfScaleFactor]}" />
+        <NumericUpDown Minimum="0.0001" Maximum="10000" Increment="0.1" Value="{Binding GltfScaleFactor}" />
       </StackPanel>
     </ScrollViewer>
 

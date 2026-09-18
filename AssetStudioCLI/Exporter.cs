@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using AssetStudioCLI.Options;
 using Newtonsoft.Json;
 using System.Collections.Generic;
@@ -266,16 +266,37 @@ namespace AssetStudioCLI
 
         public static bool ExportAnimator(AssetItem item, string exportPath, List<AssetItem> animationList = null)
         {
-            var exportFullPath = Path.Combine(exportPath, "FBX_Animator", item.Text, item.Text + ".fbx");
+            var format = CLIOptions.o_modelFormat.Value;
+            var ext = format switch
+            {
+                ModelFormat.Glb => ".glb",
+                ModelFormat.Gltf => ".gltf",
+                _ => ".fbx"
+            };
+            var folderPrefix = format switch
+            {
+                ModelFormat.Glb => "GLB_Animator",
+                ModelFormat.Gltf => "GLTF_Animator",
+                _ => "FBX_Animator"
+            };
+
+            var exportFullPath = Path.Combine(exportPath, folderPrefix, item.Text, item.Text + ext);
             if (File.Exists(exportFullPath))
             {
-                exportFullPath = Path.Combine(exportPath, item.Text + item.UniqueID, item.Text + ".fbx");
+                exportFullPath = Path.Combine(exportPath, folderPrefix, item.Text + item.UniqueID, item.Text + ext);
             }
             var m_Animator = (Animator)item.Asset;
             var convert = animationList != null
                 ? new ModelConverter(m_Animator, CLIOptions.o_imageFormat.Value, animationList.Select(x => (AnimationClip)x.Asset).ToList())
                 : new ModelConverter(m_Animator, CLIOptions.o_imageFormat.Value);
-            ExportFbx(convert, exportFullPath);
+            if (format == ModelFormat.Fbx)
+            {
+                ExportFbx(convert, exportFullPath);
+            }
+            else
+            {
+                ExportGltf(convert, exportFullPath, format == ModelFormat.Glb ? Gltf.Format.Glb : Gltf.Format.Gltf);
+            }
             return true;
         }
 
@@ -289,6 +310,19 @@ namespace AssetStudioCLI
                 ExportAnimations = CLIOptions.o_fbxAnimMode.Value != AnimationExportMode.Skip,
             };
             ModelExporter.ExportFbx(exportPath, convert, fbxSettings);
+        }
+
+        private static void ExportGltf(IImported convert, string exportPath, Gltf.Format format)
+        {
+            var gltfSettings = new Gltf.Settings
+            {
+                ExportFormat = format,
+                ScaleFactor = CLIOptions.o_gltfScaleFactor.Value,
+                ExportAnimations = CLIOptions.o_fbxAnimMode.Value != AnimationExportMode.Skip,
+                ExportSkins = true,
+                ExportBlendShapes = true,
+            };
+            ModelExporter.ExportGltf(exportPath, convert, gltfSettings);
         }
 
         public static bool ExportRawFile(AssetItem item, string exportPath)
@@ -404,12 +438,33 @@ namespace AssetStudioCLI
                 ? new ModelConverter(gameObject, CLIOptions.o_imageFormat.Value, animationList.Select(x => (AnimationClip)x.Asset).ToList())
                 : new ModelConverter(gameObject, CLIOptions.o_imageFormat.Value);
             var modelName = FixFileName(gameObject.m_Name);
-            var exportFullPath = Path.Combine(exportPath, "FBX_GameObjects", modelName, modelName + ".fbx");
+            var format = CLIOptions.o_modelFormat.Value;
+            var ext = format switch
+            {
+                ModelFormat.Glb => ".glb",
+                ModelFormat.Gltf => ".gltf",
+                _ => ".fbx"
+            };
+            var folderPrefix = format switch
+            {
+                ModelFormat.Glb => "GLB_GameObjects",
+                ModelFormat.Gltf => "GLTF_GameObjects",
+                _ => "FBX_GameObjects"
+            };
+
+            var exportFullPath = Path.Combine(exportPath, folderPrefix, modelName, modelName + ext);
             if (File.Exists(exportFullPath))
             {
-                exportFullPath = Path.Combine(exportPath, $"{modelName}_{gameObject.GetHashCode():X}", modelName + ".fbx");
+                exportFullPath = Path.Combine(exportPath, folderPrefix, $"{modelName}_{gameObject.GetHashCode():X}", modelName + ext);
             }
-            ExportFbx(convert, exportFullPath);
+            if (format == ModelFormat.Fbx)
+            {
+                ExportFbx(convert, exportFullPath);
+            }
+            else
+            {
+                ExportGltf(convert, exportFullPath, format == ModelFormat.Glb ? Gltf.Format.Glb : Gltf.Format.Gltf);
+            }
         }
 
         public static string FixFileName(string str)

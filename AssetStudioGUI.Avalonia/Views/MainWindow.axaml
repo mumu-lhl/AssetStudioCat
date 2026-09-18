@@ -40,7 +40,9 @@
         <MenuItem Header="{Binding L[ExportDump]}" IsEnabled="{Binding CanExport}" Click="ExportDump" />
         <Separator />
         <MenuItem Header="{Binding L[ExportAnimator]}" IsEnabled="{Binding CanExportAnimator}" Click="ExportAnimator" />
+        <MenuItem Header="{Binding L[ExportAnimatorGltf]}" IsEnabled="{Binding CanExportAnimator}" Click="ExportAnimatorGltf" />
         <MenuItem Header="{Binding L[ExportSceneModel]}" IsEnabled="{Binding CanExportSceneModel}" Click="ExportSceneModel" />
+        <MenuItem Header="{Binding L[ExportSceneModelGltf]}" IsEnabled="{Binding CanExportSceneModel}" Click="ExportSceneModelGltf" />
         <Separator />
         <MenuItem Header="{Binding L[BatchConverted]}">
           <MenuItem Header="{Binding L[SelectedObjects]}" IsEnabled="{Binding HasBatchSelection}" Click="BatchConvertedSelected" />
@@ -117,6 +119,12 @@
               <ProgressBar Width="80" IsIndeterminate="True" IsVisible="{Binding IsHierarchyBusy}" />
             </StackPanel>
             <TreeView Grid.Row="1" Margin="4" ItemsSource="{Binding SceneRoots}" SelectionChanged="SceneSelectionChanged">
+              <TreeView.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="{Binding L[ExportSceneModel]}" IsEnabled="{Binding CanExportSceneModel}" Click="ExportSceneModel" />
+                  <MenuItem Header="{Binding L[ExportSceneModelGltf]}" IsEnabled="{Binding CanExportSceneModel}" Click="ExportSceneModelGltf" />
+                </ContextMenu>
+              </TreeView.ContextMenu>
               <TreeView.ItemTemplate>
                 <TreeDataTemplate x:DataType="vm:SceneNodeViewModel" ItemsSource="{Binding Children}">
                   <StackPanel Orientation="Horizontal" Spacing="6">

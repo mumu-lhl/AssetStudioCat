@@ -23,6 +23,69 @@ public sealed class AnimatorExportService
         CancellationToken cancellationToken = default) =>
         Task.Run(() => Export(entry, outputDirectory, cancellationToken), cancellationToken);
 
+    public Task<AssetExportResult> ExportGltfAsync(
+        AssetIndexEntry entry,
+        string outputDirectory,
+        Gltf.Format? format = null,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ExportGltf(entry, outputDirectory, format, cancellationToken), cancellationToken);
+
+    private AssetExportResult ExportGltf(
+        AssetIndexEntry entry,
+        string outputDirectory,
+        Gltf.Format? format,
+        CancellationToken cancellationToken)
+    {
+        if (!entry.TypeName.Equals(nameof(ClassIDType.Animator), StringComparison.Ordinal))
+        {
+            throw new NotSupportedException("glTF export requires an Animator asset.");
+        }
+
+        using var session = _objectLoader.OpenDependencyGraphAsync(entry, cancellationToken).GetAwaiter().GetResult();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (session.Asset is not Animator animator)
+        {
+            throw new InvalidDataException($"PathID {entry.PathId} is not an Animator.");
+        }
+
+        var root = Path.GetFullPath(outputDirectory);
+        Directory.CreateDirectory(root);
+        var safeName = MakeSafeFileName(entry.Name);
+        var finalDirectory = GetAvailableDirectory(root, safeName, entry.PathId);
+        var temporaryDirectory = Path.Combine(root, $".{safeName}.{Guid.NewGuid():N}.tmp");
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            var exportFormat = format ?? _appSettings.GltfFormat;
+            var ext = Gltf.Settings.GetFileExtension(exportFormat);
+            var temporaryGltf = Path.Combine(temporaryDirectory, safeName + ext);
+            var converter = new ModelConverter(animator, ToImageFormat(_appSettings.ConvertedImageFormat));
+            var settings = new Gltf.Settings
+            {
+                ExportFormat = exportFormat,
+                ExportAnimations = _appSettings.GltfExportAnimations,
+                ExportSkins = _appSettings.GltfExportSkins,
+                ExportBlendShapes = _appSettings.GltfExportBlendShapes,
+                ScaleFactor = (float)_appSettings.GltfScaleFactor,
+            };
+            ModelExporter.ExportGltf(temporaryGltf, converter, settings);
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.Move(temporaryDirectory, finalDirectory);
+            return new AssetExportResult(Directory.GetFiles(finalDirectory, "*", SearchOption.AllDirectories));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new InvalidOperationException("Animator glTF export failed: " + exception.Message, exception);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, true);
+            }
+        }
+    }
+
     private AssetExportResult Export(
         AssetIndexEntry entry,
         string outputDirectory,

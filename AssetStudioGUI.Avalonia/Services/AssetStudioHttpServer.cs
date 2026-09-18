@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AssetStudio;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Preview;
@@ -636,7 +637,16 @@ public sealed class AssetStudioHttpServer : IDisposable
         var exportedFiles = new List<string>();
         var errors = new List<string>();
 
+        var formatStr = jsonNode["format"]?.GetValue<string>()?.Trim().ToLowerInvariant();
+        Gltf.Format? gltfFormat = formatStr switch
+        {
+            "glb" => Gltf.Format.Glb,
+            "gltf" => Gltf.Format.Gltf,
+            _ => null
+        };
+
         var exportService = _viewModel.ConvertedExportService;
+        var animatorExportService = _viewModel.AnimatorExportService;
         foreach (var idNode in idsArray)
         {
             if (idNode is null || !idNode.AsValue().TryGetValue<long>(out var id)) continue;
@@ -649,7 +659,14 @@ public sealed class AssetStudioHttpServer : IDisposable
 
             try
             {
-                if (exportService is not null)
+                if (entry.TypeName == "Animator" && animatorExportService is not null)
+                {
+                    var animRes = gltfFormat.HasValue
+                        ? await animatorExportService.ExportGltfAsync(entry, outputDir, gltfFormat.Value)
+                        : await animatorExportService.ExportAsync(entry, outputDir);
+                    exportedFiles.AddRange(animRes.Files);
+                }
+                else if (exportService is not null)
                 {
                     var res = await exportService.ExportAsync(entry, outputDir);
                     exportedFiles.AddRange(res.Files);
@@ -869,14 +886,25 @@ public sealed class AssetStudioHttpServer : IDisposable
             return;
         }
 
+        var formatStr = jsonNode["format"]?.GetValue<string>()?.Trim().ToLowerInvariant();
+        Gltf.Format? gltfFormat = formatStr switch
+        {
+            "glb" => Gltf.Format.Glb,
+            "gltf" => Gltf.Format.Gltf,
+            _ => null
+        };
+
         try
         {
             Directory.CreateDirectory(outputDir);
-            var exportResult = await exportService.ExportAsync(targetTransform, outputDir);
+            var exportResult = gltfFormat.HasValue
+                ? await exportService.ExportGltfAsync(targetTransform, outputDir, gltfFormat.Value)
+                : await exportService.ExportAsync(targetTransform, outputDir);
 
             var resultObj = new JsonObject
             {
                 ["success"] = true,
+                ["format"] = gltfFormat.HasValue ? gltfFormat.Value.ToString().ToLowerInvariant() : "fbx",
                 ["transform_id"] = targetTransform.Id,
                 ["transform_name"] = targetTransform.Name,
                 ["output_directory"] = outputDir,

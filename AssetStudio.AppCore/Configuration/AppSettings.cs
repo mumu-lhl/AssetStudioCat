@@ -40,6 +40,16 @@ public sealed class AppSettings
 
     public double FbxScaleFactor { get; set; } = 1.0;
 
+    public Gltf.Format GltfFormat { get; set; } = Gltf.Format.Glb;
+
+    public bool GltfExportAnimations { get; set; } = true;
+
+    public bool GltfExportSkins { get; set; } = true;
+
+    public bool GltfExportBlendShapes { get; set; } = true;
+
+    public double GltfScaleFactor { get; set; } = 1.0;
+
     public bool RestoreLastSource { get; set; } = true;
 
     public string Language { get; set; } = "auto";
@@ -60,6 +70,7 @@ public sealed class AppSettings
             128L * 1024 * 1024,
             64L * 1024 * 1024 * 1024);
         FbxScaleFactor = Math.Clamp(FbxScaleFactor, 0.0001, 10_000);
+        GltfScaleFactor = Math.Clamp(GltfScaleFactor, 0.0001, 10_000);
         if (HttpApiPort <= 0 || HttpApiPort > 65535)
         {
             HttpApiPort = 23333;

@@ -371,6 +371,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ExportAnimatorGltf(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = _localizer["ChooseAnimatorDirectory"],
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedAnimatorGltfAsync(path);
+        }
+    }
+
     private async void ExportSceneModel(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
@@ -385,6 +403,23 @@ public partial class MainWindow : Window
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
         {
             await viewModel.ExportSelectedSceneModelAsync(path);
+        }
+    }
+
+    private async void ExportSceneModelGltf(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = _localizer["ChooseSceneDirectory"],
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            await viewModel.ExportSelectedSceneModelGltfAsync(path);
         }
     }
 

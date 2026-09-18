@@ -1,3 +1,4 @@
+using AssetStudio;
 using AssetStudio.AppCore.Configuration;
 using AssetStudioGUI.Avalonia.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -30,6 +31,11 @@ public partial class SettingsViewModel : ViewModelBase
         FbxEulerFilter = settings.FbxEulerFilter;
         FbxAscii = settings.FbxAscii;
         FbxScaleFactor = settings.FbxScaleFactor;
+        SelectedGltfFormat = settings.GltfFormat;
+        GltfExportAnimations = settings.GltfExportAnimations;
+        GltfExportSkins = settings.GltfExportSkins;
+        GltfExportBlendShapes = settings.GltfExportBlendShapes;
+        GltfScaleFactor = settings.GltfScaleFactor;
         RestoreLastSource = settings.RestoreLastSource;
         SelectedLanguage = AppLocalizer.NormalizeSettingLanguage(settings.Language);
     }
@@ -41,6 +47,8 @@ public partial class SettingsViewModel : ViewModelBase
     public IReadOnlyList<BundleDecompressionMode> Modes { get; } = Enum.GetValues<BundleDecompressionMode>();
 
     public IReadOnlyList<ConvertedImageFormat> ImageFormats { get; } = Enum.GetValues<ConvertedImageFormat>();
+
+    public IReadOnlyList<Gltf.Format> GltfFormats { get; } = Enum.GetValues<Gltf.Format>();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDiskDirectoryEnabled))]
@@ -89,6 +97,21 @@ public partial class SettingsViewModel : ViewModelBase
     public partial double FbxScaleFactor { get; set; }
 
     [ObservableProperty]
+    public partial Gltf.Format SelectedGltfFormat { get; set; }
+
+    [ObservableProperty]
+    public partial bool GltfExportAnimations { get; set; }
+
+    [ObservableProperty]
+    public partial bool GltfExportSkins { get; set; }
+
+    [ObservableProperty]
+    public partial bool GltfExportBlendShapes { get; set; }
+
+    [ObservableProperty]
+    public partial double GltfScaleFactor { get; set; }
+
+    [ObservableProperty]
     public partial bool RestoreLastSource { get; set; }
 
     [ObservableProperty]
@@ -113,6 +136,11 @@ public partial class SettingsViewModel : ViewModelBase
         _settings.FbxEulerFilter = FbxEulerFilter;
         _settings.FbxAscii = FbxAscii;
         _settings.FbxScaleFactor = FbxScaleFactor;
+        _settings.GltfFormat = SelectedGltfFormat;
+        _settings.GltfExportAnimations = GltfExportAnimations;
+        _settings.GltfExportSkins = GltfExportSkins;
+        _settings.GltfExportBlendShapes = GltfExportBlendShapes;
+        _settings.GltfScaleFactor = GltfScaleFactor;
         _settings.RestoreLastSource = RestoreLastSource;
         _settings.Language = AppLocalizer.NormalizeSettingLanguage(SelectedLanguage);
         await _store.SaveAsync(_settings, cancellationToken);

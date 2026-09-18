@@ -18,6 +18,7 @@ namespace AssetStudio
     {
         public string Name { get; set; }
         public Vector3 LocalRotation { get; set; }
+        public Quaternion LocalRotationQ { get; set; } = new Quaternion(0, 0, 0, 1);
         public Vector3 LocalPosition { get; set; }
         public Vector3 LocalScale { get; set; }
         public ImportedFrame Parent { get; set; }
@@ -249,6 +250,7 @@ namespace AssetStudio
         public string Path { get; set; }
         public List<ImportedKeyframe<Vector3>> Scalings = new List<ImportedKeyframe<Vector3>>();
         public List<ImportedKeyframe<Vector3>> Rotations = new List<ImportedKeyframe<Vector3>>();
+        public List<ImportedKeyframe<Quaternion>> RotationQuats = new List<ImportedKeyframe<Quaternion>>();
         public List<ImportedKeyframe<Vector3>> Translations = new List<ImportedKeyframe<Vector3>>();
         public ImportedBlendShape BlendShape;
     }

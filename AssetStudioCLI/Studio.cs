@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using AssetStudioCLI.Options;
 using CubismLive2DExtractor;
 using System;
@@ -911,8 +911,14 @@ namespace AssetStudioCLI
                         }
                     }
                     Directory.CreateDirectory(targetPath);
-                    //导出FBX
-                    Logger.Info($"Exporting {filename}.fbx");
+                    //导出模型
+                    var ext = CLIOptions.o_modelFormat.Value switch
+                    {
+                        ModelFormat.Glb => ".glb",
+                        ModelFormat.Gltf => ".gltf",
+                        _ => ".fbx"
+                    };
+                    Logger.Info($"Exporting {filename}{ext}");
                     Progress.Report(k, exportableCount);
                     try
                     {

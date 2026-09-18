@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using AssetStudio;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Exporting;
@@ -53,6 +54,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public ConvertedAssetExportService? ConvertedExportService => _convertedExportService;
     public AssetExportService? ExportService => _exportService;
     public GameObjectExportService? GameObjectExportService => _gameObjectExportService;
+    public AnimatorExportService? AnimatorExportService => _animatorExportService;
     public long TotalAssetCount => _totalAssetCount;
 
     public MainViewModel()
@@ -781,6 +783,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public async Task ExportSelectedSceneModelGltfAsync(string outputDirectory, Gltf.Format? format = null)
+    {
+        if (SelectedSceneNode is null || _gameObjectExportService is null || IsExportBusy)
+        {
+            return;
+        }
+        IsExportBusy = true;
+        StatusText = T("ExportingSceneModel", SelectedSceneNode.Name);
+        try
+        {
+            var result = await _gameObjectExportService.ExportGltfAsync(SelectedSceneNode.TransformEntry, outputDirectory, format);
+            StatusText = T("SceneModelExported", result.Files.Count);
+        }
+        catch (Exception exception)
+        {
+            StatusText = T("SceneModelExportFailed", exception.Message);
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
+
     public async Task LoadSelectedDumpAsync()
     {
         if (SelectedAsset is null || _inspectionService is null || IsDumpBusy)
@@ -835,6 +860,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             var result = await _animatorExportService.ExportAsync(SelectedAsset.IndexEntry, outputDirectory);
+            StatusText = T("AnimatorExported", result.Files.Count);
+        }
+        catch (Exception exception)
+        {
+            StatusText = T("AnimatorExportFailed", exception.Message);
+        }
+        finally
+        {
+            IsExportBusy = false;
+        }
+    }
+
+    public async Task ExportSelectedAnimatorGltfAsync(string outputDirectory, Gltf.Format? format = null)
+    {
+        if (SelectedAsset is null || _animatorExportService is null || !CanExportAnimator)
+        {
+            return;
+        }
+
+        IsExportBusy = true;
+        StatusText = T("ExportingAnimatorGltf");
+        try
+        {
+            var result = await _animatorExportService.ExportGltfAsync(SelectedAsset.IndexEntry, outputDirectory, format);
             StatusText = T("AnimatorExported", result.Files.Count);
         }
         catch (Exception exception)
