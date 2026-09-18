@@ -135,6 +135,19 @@ namespace AssetStudio
         {
             var meshBuilder = VertexBuilder<TvG, TvM, TvS>.CreateCompatibleMesh(iMesh.Path ?? "Mesh");
 
+            int vertexCount = iMesh.VertexList != null ? iMesh.VertexList.Count : 0;
+            if (vertexCount == 0 || iMesh.SubmeshList == null)
+            {
+                return meshBuilder;
+            }
+
+            // Pre-convert each vertex once to avoid redundant conversions across shared triangle faces
+            var convertedVertices = new VertexBuilder<TvG, TvM, TvS>[vertexCount];
+            for (int v = 0; v < vertexCount; v++)
+            {
+                convertedVertices[v] = GetVertex<TvG, TvM, TvS>(iMesh.VertexList[v], scaleFactor);
+            }
+
             foreach (var submesh in iMesh.SubmeshList)
             {
                 MaterialBuilder mat = defaultMaterial;
@@ -154,18 +167,14 @@ namespace AssetStudio
                     int idx1 = submesh.BaseVertex + face.VertexIndices[1];
                     int idx2 = submesh.BaseVertex + face.VertexIndices[2];
 
-                    if (idx0 < 0 || idx0 >= iMesh.VertexList.Count ||
-                        idx1 < 0 || idx1 >= iMesh.VertexList.Count ||
-                        idx2 < 0 || idx2 >= iMesh.VertexList.Count)
+                    if ((uint)idx0 >= (uint)vertexCount ||
+                        (uint)idx1 >= (uint)vertexCount ||
+                        (uint)idx2 >= (uint)vertexCount)
                     {
                         continue;
                     }
 
-                    var v0 = GetVertex<TvG, TvM, TvS>(iMesh.VertexList[idx0], scaleFactor);
-                    var v1 = GetVertex<TvG, TvM, TvS>(iMesh.VertexList[idx1], scaleFactor);
-                    var v2 = GetVertex<TvG, TvM, TvS>(iMesh.VertexList[idx2], scaleFactor);
-
-                    prim.AddTriangle(v0, v1, v2);
+                    prim.AddTriangle(convertedVertices[idx0], convertedVertices[idx1], convertedVertices[idx2]);
                 }
             }
 
@@ -201,21 +210,22 @@ namespace AssetStudio
             }
 
             TvM material;
+            var uvList = v.UV;
             if (typeof(TvM) == typeof(VertexTexture1))
             {
-                var uv0 = v.UV != null && v.UV.Length > 0 && v.UV[0] != null
-                    ? new SysVector2(v.UV[0][0], 1.0f - v.UV[0][1])
+                var uv0 = uvList != null && uvList.Length > 0 && uvList[0] != null && uvList[0].Length >= 2
+                    ? new SysVector2(uvList[0][0], 1.0f - uvList[0][1])
                     : SysVector2.Zero;
                 var m = new VertexTexture1(uv0);
                 material = Unsafe.As<VertexTexture1, TvM>(ref m);
             }
             else if (typeof(TvM) == typeof(VertexTexture2))
             {
-                var uv0 = v.UV != null && v.UV.Length > 0 && v.UV[0] != null
-                    ? new SysVector2(v.UV[0][0], 1.0f - v.UV[0][1])
+                var uv0 = uvList != null && uvList.Length > 0 && uvList[0] != null && uvList[0].Length >= 2
+                    ? new SysVector2(uvList[0][0], 1.0f - uvList[0][1])
                     : SysVector2.Zero;
-                var uv1 = v.UV != null && v.UV.Length > 1 && v.UV[1] != null
-                    ? new SysVector2(v.UV[1][0], 1.0f - v.UV[1][1])
+                var uv1 = uvList != null && uvList.Length > 1 && uvList[1] != null && uvList[1].Length >= 2
+                    ? new SysVector2(uvList[1][0], 1.0f - uvList[1][1])
                     : SysVector2.Zero;
                 var m = new VertexTexture2(uv0, uv1);
                 material = Unsafe.As<VertexTexture2, TvM>(ref m);
@@ -229,8 +239,8 @@ namespace AssetStudio
             else if (typeof(TvM) == typeof(VertexColor1Texture1))
             {
                 var col = new SysVector4(v.Color.R, v.Color.G, v.Color.B, v.Color.A);
-                var uv0 = v.UV != null && v.UV.Length > 0 && v.UV[0] != null
-                    ? new SysVector2(v.UV[0][0], 1.0f - v.UV[0][1])
+                var uv0 = uvList != null && uvList.Length > 0 && uvList[0] != null && uvList[0].Length >= 2
+                    ? new SysVector2(uvList[0][0], 1.0f - uvList[0][1])
                     : SysVector2.Zero;
                 var m = new VertexColor1Texture1(col, uv0);
                 material = Unsafe.As<VertexColor1Texture1, TvM>(ref m);
@@ -238,46 +248,56 @@ namespace AssetStudio
             else if (typeof(TvM) == typeof(VertexColor1Texture2))
             {
                 var col = new SysVector4(v.Color.R, v.Color.G, v.Color.B, v.Color.A);
-                var uv0 = v.UV != null && v.UV.Length > 0 && v.UV[0] != null
-                    ? new SysVector2(v.UV[0][0], 1.0f - v.UV[0][1])
+                var uv0 = uvList != null && uvList.Length > 0 && uvList[0] != null && uvList[0].Length >= 2
+                    ? new SysVector2(uvList[0][0], 1.0f - uvList[0][1])
                     : SysVector2.Zero;
-                var uv1 = v.UV != null && v.UV.Length > 1 && v.UV[1] != null
-                    ? new SysVector2(v.UV[1][0], 1.0f - v.UV[1][1])
+                var uv1 = uvList != null && uvList.Length > 1 && uvList[1] != null && uvList[1].Length >= 2
+                    ? new SysVector2(uvList[1][0], 1.0f - uvList[1][1])
                     : SysVector2.Zero;
                 var m = new VertexColor1Texture2(col, uv0, uv1);
                 material = Unsafe.As<VertexColor1Texture2, TvM>(ref m);
             }
             else
             {
-                material = default;
+                var m = new VertexEmpty();
+                material = Unsafe.As<VertexEmpty, TvM>(ref m);
             }
 
-            TvS skin;
+            TvS skinning;
             if (typeof(TvS) == typeof(VertexJoints4))
             {
-                if (v.BoneIndices != null && v.Weights != null && v.Weights.Length >= 4)
+                var s = new VertexJoints4();
+                var bIdx = v.BoneIndices;
+                var bWgt = v.Weights;
+                if (bIdx != null && bWgt != null && bWgt.Length > 0)
                 {
-                    var indices = new SysVector4(v.BoneIndices[0], v.BoneIndices[1], v.BoneIndices[2], v.BoneIndices[3]);
-                    var weights = new SysVector4(v.Weights[0], v.Weights[1], v.Weights[2], v.Weights[3]);
+                    var indices = new SysVector4(
+                        bIdx.Length > 0 ? bIdx[0] : 0,
+                        bIdx.Length > 1 ? bIdx[1] : 0,
+                        bIdx.Length > 2 ? bIdx[2] : 0,
+                        bIdx.Length > 3 ? bIdx[3] : 0);
+                    var weights = new SysVector4(
+                        bWgt.Length > 0 ? bWgt[0] : 0,
+                        bWgt.Length > 1 ? bWgt[1] : 0,
+                        bWgt.Length > 2 ? bWgt[2] : 0,
+                        bWgt.Length > 3 ? bWgt[3] : 0);
                     float sum = weights.X + weights.Y + weights.Z + weights.W;
                     if (sum > 0f)
                     {
                         weights /= sum;
                     }
-                    var s = new VertexJoints4(SparseWeight8.Create(indices, weights));
-                    skin = Unsafe.As<VertexJoints4, TvS>(ref s);
+                    var sw = SparseWeight8.Create(indices, weights);
+                    s = new VertexJoints4(sw);
                 }
-                else
-                {
-                    skin = default;
-                }
+                skinning = Unsafe.As<VertexJoints4, TvS>(ref s);
             }
             else
             {
-                skin = default;
+                var s = new VertexEmpty();
+                skinning = Unsafe.As<VertexEmpty, TvS>(ref s);
             }
 
-            return new VertexBuilder<TvG, TvM, TvS>(geometry, material, skin);
+            return new VertexBuilder<TvG, TvM, TvS>(geometry, material, skinning);
         }
     }
 }

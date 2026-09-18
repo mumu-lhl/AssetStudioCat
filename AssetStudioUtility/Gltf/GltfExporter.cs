@@ -50,7 +50,11 @@ namespace AssetStudio
             }
 
             var sceneBuilder = BuildScene(imported, settings);
-            var modelRoot = sceneBuilder.ToGltf2();
+            var sceneSettings = new SceneBuilderSchema2Settings
+            {
+                CompactVertexWeights = true
+            };
+            var modelRoot = sceneBuilder.ToGltf2(sceneSettings);
 
             try
             {
@@ -120,14 +124,25 @@ namespace AssetStudio
             }
 
             // 2. Prepare materials and textures
+            var textureLookup = new Dictionary<string, ImportedTexture>(StringComparer.OrdinalIgnoreCase);
+            if (imported.TextureList != null)
+            {
+                foreach (var tex in imported.TextureList)
+                {
+                    if (!string.IsNullOrEmpty(tex.Name))
+                    {
+                        textureLookup.TryAdd(tex.Name, tex);
+                    }
+                }
+            }
+
             var imageCache = new Dictionary<string, MemoryImage>(StringComparer.OrdinalIgnoreCase);
             MemoryImage? GetImage(string textureName)
             {
                 if (string.IsNullOrEmpty(textureName)) return null;
                 if (imageCache.TryGetValue(textureName, out var cached)) return cached;
 
-                var tex = ImportedHelpers.FindTexture(textureName, imported.TextureList);
-                if (tex != null && tex.Data != null && tex.Data.Length > 0)
+                if (textureLookup.TryGetValue(textureName, out var tex) && tex.Data != null && tex.Data.Length > 0)
                 {
                     var memImage = new MemoryImage(tex.Data);
                     imageCache[textureName] = memImage;

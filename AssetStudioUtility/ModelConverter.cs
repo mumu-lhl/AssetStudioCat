@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace AssetStudio
 {
@@ -20,6 +21,7 @@ namespace AssetStudio
         private Dictionary<AnimationClip, string> boundAnimationPathDic = new Dictionary<AnimationClip, string>();
         private Dictionary<uint, string> bonePathHash = new Dictionary<uint, string>();
         private Dictionary<Texture2D, string> textureNameDictionary = new Dictionary<Texture2D, string>();
+        private readonly List<(Texture2D Texture, string Name)> pendingTextures = new();
         private Dictionary<Transform, ImportedFrame> transformDictionary = new Dictionary<Transform, ImportedFrame>();
         Dictionary<uint, string> morphChannelNames = new Dictionary<uint, string>();
         private IEqualityComparer<AnimationClip> animationClipEqComparer = new AnimationClip.EqComparer();
@@ -41,6 +43,7 @@ namespace AssetStudio
             {
                 InitWithGameObject(m_GameObject);
             }
+            ConvertPendingTextures();
             if (animationList != null && animationList.Count > 0)
             {
                 Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
@@ -70,6 +73,7 @@ namespace AssetStudio
                 var m_Transform = m_GameObject.m_Transform;
                 ConvertMeshRenderer(m_Transform);
             }
+            ConvertPendingTextures();
             if (animationList != null && animationList.Count > 0)
             {
                 Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
@@ -92,6 +96,7 @@ namespace AssetStudio
                 Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
                 animationClipUniqArray = animationList.Distinct(animationClipEqComparer).ToArray();
             }
+            ConvertPendingTextures();
             ConvertAnimations();
         }
 
@@ -754,7 +759,7 @@ namespace AssetStudio
 
                     texture.Offset = texEnv.Value.m_Offset;
                     texture.Scale = texEnv.Value.m_Scale;
-                    ConvertTexture2D(m_Texture2D, texture.Name);
+                    QueueTexture2D(m_Texture2D, texture.Name);
                 }
 
                 MaterialList.Add(iMat);
@@ -764,6 +769,72 @@ namespace AssetStudio
                 iMat = new ImportedMaterial();
             }
             return iMat;
+        }
+
+        private void QueueTexture2D(Texture2D m_Texture2D, string name)
+        {
+            if (ImportedHelpers.FindTexture(name, TextureList) != null)
+            {
+                return;
+            }
+            if (!pendingTextures.Any(p => p.Name == name))
+            {
+                pendingTextures.Add((m_Texture2D, name));
+            }
+        }
+
+        public void ConvertPendingTextures()
+        {
+            if (pendingTextures.Count == 0) return;
+
+            var toConvert = pendingTextures
+                .Where(x => ImportedHelpers.FindTexture(x.Name, TextureList) == null)
+                .ToList();
+
+            if (toConvert.Count == 0)
+            {
+                pendingTextures.Clear();
+                return;
+            }
+
+            if (toConvert.Count == 1)
+            {
+                var item = toConvert[0];
+                ConvertTexture2D(item.Texture, item.Name);
+                pendingTextures.Clear();
+                return;
+            }
+
+            var converted = new (ImportedTexture Tex, string Name)[toConvert.Count];
+            Parallel.For(0, toConvert.Count, i =>
+            {
+                var item = toConvert[i];
+                try
+                {
+                    var stream = item.Texture.ConvertToStream(imageFormat, true);
+                    if (stream != null)
+                    {
+                        using (stream)
+                        {
+                            converted[i] = (new ImportedTexture(stream, item.Name), item.Name);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Failed to convert texture {item.Name}: {ex.Message}");
+                }
+            });
+
+            foreach (var item in converted)
+            {
+                if (item.Tex != null && ImportedHelpers.FindTexture(item.Name, TextureList) == null)
+                {
+                    TextureList.Add(item.Tex);
+                }
+            }
+
+            pendingTextures.Clear();
         }
 
         private void ConvertTexture2D(Texture2D m_Texture2D, string name)
