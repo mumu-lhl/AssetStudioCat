@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -11,14 +11,18 @@ namespace AssetStudio.FbxInterop
 
         private IntPtr _pContext;
         private readonly Dictionary<ImportedFrame, IntPtr> _frameToNode;
-        private readonly List<KeyValuePair<string, IntPtr>> _createdMaterials;
+        private readonly Dictionary<string, IntPtr> _pathToNode;
+        private readonly List<(string Path, IntPtr Node)> _nodeList;
+        private readonly Dictionary<string, IntPtr> _createdMaterials;
         private readonly Dictionary<string, IntPtr> _createdTextures;
 
         public FbxExporterContext()
         {
             _pContext = AsFbxCreateContext();
             _frameToNode = new Dictionary<ImportedFrame, IntPtr>();
-            _createdMaterials = new List<KeyValuePair<string, IntPtr>>();
+            _pathToNode = new Dictionary<string, IntPtr>();
+            _nodeList = new List<(string, IntPtr)>();
+            _createdMaterials = new Dictionary<string, IntPtr>();
             _createdTextures = new Dictionary<string, IntPtr>();
         }
 
@@ -45,6 +49,8 @@ namespace AssetStudio.FbxInterop
             IsDisposed = true;
 
             _frameToNode.Clear();
+            _pathToNode.Clear();
+            _nodeList.Clear();
             _createdMaterials.Clear();
             _createdTextures.Clear();
 
@@ -81,8 +87,8 @@ namespace AssetStudio.FbxInterop
                 return;
             }
 
-            var framePathList = new List<string>(framePaths);
-            var framePathArray = framePathList.ToArray();
+            var framePathArray = new string[framePaths.Count];
+            framePaths.CopyTo(framePathArray);
 
             AsFbxSetFramePaths(_pContext, framePathArray);
         }
@@ -100,6 +106,20 @@ namespace AssetStudio.FbxInterop
 
             Debug.Assert(rootNode != IntPtr.Zero);
 
+            HashSet<string> meshPathSet = null;
+            if (meshList != null && meshList.Count > 0)
+            {
+                meshPathSet = new HashSet<string>(meshList.Count);
+                for (var i = 0; i < meshList.Count; i++)
+                {
+                    var p = meshList[i].Path;
+                    if (p != null)
+                    {
+                        meshPathSet.Add(p);
+                    }
+                }
+            }
+
             var nodeStack = new Stack<IntPtr>();
             var frameStack = new Stack<ImportedFrame>();
 
@@ -111,14 +131,20 @@ namespace AssetStudio.FbxInterop
                 var parentNode = nodeStack.Pop();
                 var frame = frameStack.Pop();
 
-                var childNode = AsFbxExportSingleFrame(_pContext, parentNode, frame.Path, frame.Name, frame.LocalPosition, frame.LocalRotation, frame.LocalScale);
+                var path = frame.Path;
+                var childNode = AsFbxExportSingleFrame(_pContext, parentNode, path, frame.Name, frame.LocalPosition, frame.LocalRotation, frame.LocalScale);
 
-                if (meshList != null && ImportedHelpers.FindMesh(frame.Path, meshList) != null)
+                if (meshPathSet != null && meshPathSet.Contains(path))
                 {
                     meshFrames.Add(frame);
                 }
 
-                _frameToNode.Add(frame, childNode);
+                _frameToNode[frame] = childNode;
+                if (childNode != IntPtr.Zero)
+                {
+                    _pathToNode[path] = childNode;
+                    _nodeList.Add((path, childNode));
+                }
 
                 for (var i = frame.Count - 1; i >= 0; i -= 1)
                 {
@@ -130,40 +156,28 @@ namespace AssetStudio.FbxInterop
 
         internal void SetJointsNode(ImportedFrame rootFrame, HashSet<string> bonePaths, bool castToBone, float boneSize)
         {
-            var frameStack = new Stack<ImportedFrame>();
-
-            frameStack.Push(rootFrame);
-
-            while (frameStack.Count > 0)
+            if (castToBone)
             {
-                var frame = frameStack.Pop();
-
-                if (_frameToNode.TryGetValue(frame, out var node))
+                for (var i = 0; i < _nodeList.Count; i++)
                 {
-                    Debug.Assert(node != IntPtr.Zero);
+                    AsFbxSetJointsNode_CastToBone(_pContext, _nodeList[i].Node, boneSize);
+                }
+            }
+            else
+            {
+                Debug.Assert(bonePaths != null);
 
-                    if (castToBone)
+                for (var i = 0; i < _nodeList.Count; i++)
+                {
+                    var item = _nodeList[i];
+                    if (bonePaths.Contains(item.Path))
                     {
-                        AsFbxSetJointsNode_CastToBone(_pContext, node, boneSize);
+                        AsFbxSetJointsNode_BoneInPath(_pContext, item.Node, boneSize);
                     }
                     else
                     {
-                        Debug.Assert(bonePaths != null);
-
-                        if (bonePaths.Contains(frame.Path))
-                        {
-                            AsFbxSetJointsNode_BoneInPath(_pContext, node, boneSize);
-                        }
-                        else
-                        {
-                            AsFbxSetJointsNode_Generic(_pContext, node);
-                        }
+                        AsFbxSetJointsNode_Generic(_pContext, item.Node);
                     }
-                }
-
-                for (var i = frame.Count - 1; i >= 0; i -= 1)
-                {
-                    frameStack.Push(frame[i]);
                 }
             }
         }
@@ -173,12 +187,14 @@ namespace AssetStudio.FbxInterop
             AsFbxPrepareMaterials(_pContext, materialCount, textureCount);
         }
 
-        internal void ExportMeshFromFrame(ImportedFrame rootFrame, ImportedFrame meshFrame, List<ImportedMesh> meshList, List<ImportedMaterial> materialList, List<ImportedTexture> textureList, Fbx.Settings fbxSettings)
+        internal void ExportMeshFromFrame(ImportedFrame meshFrame, ImportedMesh mesh, Dictionary<string, ImportedMaterial> materialMap, Dictionary<string, ImportedTexture> textureMap, Fbx.Settings fbxSettings)
         {
-            var meshNode = _frameToNode[meshFrame];
-            var mesh = ImportedHelpers.FindMesh(meshFrame.Path, meshList);
+            if (!_frameToNode.TryGetValue(meshFrame, out var meshNode) || meshNode == IntPtr.Zero || mesh == null)
+            {
+                return;
+            }
 
-            ExportMesh(rootFrame, materialList, textureList, meshNode, mesh, fbxSettings);
+            ExportMesh(materialMap, textureMap, meshNode, mesh, fbxSettings);
         }
 
         private IntPtr ExportTexture(ImportedTexture texture)
@@ -188,26 +204,24 @@ namespace AssetStudio.FbxInterop
                 return IntPtr.Zero;
             }
 
-            if (_createdTextures.ContainsKey(texture.Name))
+            if (_createdTextures.TryGetValue(texture.Name, out var pTex))
             {
-                return _createdTextures[texture.Name];
+                return pTex;
             }
 
-            var pTex = AsFbxCreateTexture(_pContext, texture.Name);
+            pTex = AsFbxCreateTexture(_pContext, texture.Name);
 
             _createdTextures.Add(texture.Name, pTex);
 
-            var file = new FileInfo(texture.Name);
-
-            using (var writer = new BinaryWriter(file.Create()))
+            if (texture.Data != null)
             {
-                writer.Write(texture.Data);
+                File.WriteAllBytes(texture.Name, texture.Data);
             }
 
             return pTex;
         }
 
-        private void ExportMesh(ImportedFrame rootFrame, List<ImportedMaterial> materialList, List<ImportedTexture> textureList, IntPtr frameNode, ImportedMesh importedMesh, Fbx.Settings fbxSettings)
+        private void ExportMesh(Dictionary<string, ImportedMaterial> materialMap, Dictionary<string, ImportedTexture> textureMap, IntPtr frameNode, ImportedMesh importedMesh, Fbx.Settings fbxSettings)
         {
             var boneList = importedMesh.BoneList;
             var totalBoneCount = 0;
@@ -226,15 +240,12 @@ namespace AssetStudio.FbxInterop
                 {
                     pClusterArray = AsFbxMeshCreateClusterArray(totalBoneCount);
 
-                    foreach (var bone in boneList)
+                    for (var b = 0; b < boneList.Count; b++)
                     {
-                        if (bone.Path != null)
+                        var bone = boneList[b];
+                        if (bone.Path != null && _pathToNode.TryGetValue(bone.Path, out var boneNode) && boneNode != IntPtr.Zero)
                         {
-                            var frame = rootFrame.FindFrameByPath(bone.Path);
-                            var boneNode = _frameToNode[frame];
-
                             var cluster = AsFbxMeshCreateCluster(_pContext, boneNode);
-
                             AsFbxMeshAddCluster(pClusterArray, cluster);
                         }
                         else
@@ -253,20 +264,27 @@ namespace AssetStudio.FbxInterop
                     AsFbxMeshCreateElementNormal(mesh);
                 }
 
-                for (var i = 0; i < importedMesh.hasUV.Length; i++)
+                var activeUvIndices = new List<int>();
+                if (importedMesh.hasUV != null)
                 {
-                    if (!importedMesh.hasUV[i])
-                        continue;
+                    for (var i = 0; i < importedMesh.hasUV.Length; i++)
+                    {
+                        if (!importedMesh.hasUV[i])
+                            continue;
 
-                    if (fbxSettings.ExportAllUvsAsDiffuseMaps)
-                    {
-                        AsFbxMeshCreateUVMap(mesh, i, 0);
-                    }
-                    else if(fbxSettings.UvBindings[i] > 0) //if checked
-                    {
-                        AsFbxMeshCreateUVMap(mesh, i, fbxSettings.UvBindings[i] - 1);
+                        if (fbxSettings.ExportAllUvsAsDiffuseMaps)
+                        {
+                            AsFbxMeshCreateUVMap(mesh, i, 0);
+                            activeUvIndices.Add(i);
+                        }
+                        else if (fbxSettings.UvBindings != null && fbxSettings.UvBindings.TryGetValue(i, out var binding) && binding > 0)
+                        {
+                            AsFbxMeshCreateUVMap(mesh, i, binding - 1);
+                            activeUvIndices.Add(i);
+                        }
                     }
                 }
+                var activeUvArray = activeUvIndices.ToArray();
 
                 if (importedMesh.hasTangent)
                 {
@@ -280,80 +298,92 @@ namespace AssetStudio.FbxInterop
 
                 AsFbxMeshCreateElementMaterial(mesh);
 
-                foreach (var meshObj in importedMesh.SubmeshList)
+                if (importedMesh.SubmeshList != null)
                 {
-                    var materialIndex = 0;
-                    var mat = ImportedHelpers.FindMaterial(meshObj.Material, materialList);
-
-                    if (mat != null)
+                    for (var s = 0; s < importedMesh.SubmeshList.Count; s++)
                     {
-                        var foundMat = _createdMaterials.FindIndex(kv => kv.Key == mat.Name);
-                        IntPtr pMat;
-
-                        if (foundMat >= 0)
+                        var meshObj = importedMesh.SubmeshList[s];
+                        var materialIndex = 0;
+                        ImportedMaterial mat = null;
+                        if (meshObj.Material != null)
                         {
-                            pMat = _createdMaterials[foundMat].Value;
-                        }
-                        else
-                        {
-                            var diffuse = mat.Diffuse;
-                            var ambient = mat.Ambient;
-                            var emissive = mat.Emissive;
-                            var specular = mat.Specular;
-                            var reflection = mat.Reflection;
-
-                            pMat = AsFbxCreateMaterial(_pContext, mat.Name, in diffuse, in ambient, in emissive, in specular, in reflection, mat.Shininess, mat.Transparency);
-
-                            _createdMaterials.Add(new KeyValuePair<string, IntPtr>(mat.Name, pMat));
+                            materialMap?.TryGetValue(meshObj.Material, out mat);
                         }
 
-                        materialIndex = AsFbxAddMaterialToFrame(frameNode, pMat);
-
-                        var hasTexture = false;
-
-                        foreach (var texture in mat.Textures)
+                        if (mat != null)
                         {
-                            var tex = ImportedHelpers.FindTexture(texture.Name, textureList);
-                            var pTexture = ExportTexture(tex);
-
-                            if (pTexture != IntPtr.Zero)
+                            if (!_createdMaterials.TryGetValue(mat.Name, out var pMat))
                             {
-                                switch (texture.Dest)
+                                var diffuse = mat.Diffuse;
+                                var ambient = mat.Ambient;
+                                var emissive = mat.Emissive;
+                                var specular = mat.Specular;
+                                var reflection = mat.Reflection;
+
+                                pMat = AsFbxCreateMaterial(_pContext, mat.Name, in diffuse, in ambient, in emissive, in specular, in reflection, mat.Shininess, mat.Transparency);
+
+                                _createdMaterials[mat.Name] = pMat;
+                            }
+
+                            materialIndex = AsFbxAddMaterialToFrame(frameNode, pMat);
+
+                            var hasTexture = false;
+
+                            if (mat.Textures != null)
+                            {
+                                for (var t = 0; t < mat.Textures.Count; t++)
                                 {
-                                    case 0:
-                                    case 1:
-                                    case 2:
-                                    case 3:
+                                    var texture = mat.Textures[t];
+                                    ImportedTexture tex = null;
+                                    if (texture.Name != null)
+                                    {
+                                        textureMap?.TryGetValue(texture.Name, out tex);
+                                    }
+                                    var pTexture = ExportTexture(tex);
+
+                                    if (pTexture != IntPtr.Zero)
+                                    {
+                                        switch (texture.Dest)
                                         {
-                                            AsFbxLinkTexture(texture.Dest, pTexture, pMat, texture.Offset.X, texture.Offset.Y, texture.Scale.X, texture.Scale.Y);
-                                            hasTexture = true;
-                                            break;
+                                            case 0:
+                                            case 1:
+                                            case 2:
+                                            case 3:
+                                                AsFbxLinkTexture(texture.Dest, pTexture, pMat, texture.Offset.X, texture.Offset.Y, texture.Scale.X, texture.Scale.Y);
+                                                hasTexture = true;
+                                                break;
+                                            default:
+                                                break;
                                         }
-                                    default:
-                                        break;
+                                    }
                                 }
+                            }
+
+                            if (hasTexture)
+                            {
+                                AsFbxSetFrameShadingModeToTextureShading(frameNode);
                             }
                         }
 
-                        if (hasTexture)
+                        var faceList = meshObj.FaceList;
+                        var baseVertex = meshObj.BaseVertex;
+                        if (faceList != null)
                         {
-                            AsFbxSetFrameShadingModeToTextureShading(frameNode);
+                            for (var f = 0; f < faceList.Count; f++)
+                            {
+                                var face = faceList[f];
+                                var vi = face.VertexIndices;
+                                AsFbxMeshAddPolygon(mesh, materialIndex, vi[0] + baseVertex, vi[1] + baseVertex, vi[2] + baseVertex);
+                            }
                         }
-                    }
-
-                    foreach (var face in meshObj.FaceList)
-                    {
-                        var index0 = face.VertexIndices[0] + meshObj.BaseVertex;
-                        var index1 = face.VertexIndices[1] + meshObj.BaseVertex;
-                        var index2 = face.VertexIndices[2] + meshObj.BaseVertex;
-
-                        AsFbxMeshAddPolygon(mesh, materialIndex, index0, index1, index2);
                     }
                 }
 
                 var vertexList = importedMesh.VertexList;
-
                 var vertexCount = vertexList.Count;
+                var hasNormal = importedMesh.hasNormal;
+                var hasTangent = importedMesh.hasTangent;
+                var hasColor = importedMesh.hasColor;
 
                 for (var j = 0; j < vertexCount; j += 1)
                 {
@@ -362,34 +392,32 @@ namespace AssetStudio.FbxInterop
                     var vertex = importedVertex.Vertex;
                     AsFbxMeshSetControlPoint(mesh, j, vertex.X, vertex.Y, vertex.Z);
 
-                    if (importedMesh.hasNormal)
+                    if (hasNormal)
                     {
                         var normal = importedVertex.Normal;
                         AsFbxMeshElementNormalAdd(mesh, 0, normal.X, normal.Y, normal.Z);
                     }
 
-                    for (var uvIndex = 0; uvIndex < importedMesh.hasUV.Length; uvIndex += 1)
+                    for (var uvIdx = 0; uvIdx < activeUvArray.Length; uvIdx++)
                     {
-                        if (importedMesh.hasUV[uvIndex] && fbxSettings.UvBindings[uvIndex] > 0)
-                        {
-                            var uv = importedVertex.UV[uvIndex];
-                            AsFbxMeshElementUVAdd(mesh, uvIndex, uv[0], uv[1]);
-                        }
+                        var uvIndex = activeUvArray[uvIdx];
+                        var uv = importedVertex.UV[uvIndex];
+                        AsFbxMeshElementUVAdd(mesh, uvIndex, uv[0], uv[1]);
                     }
 
-                    if (importedMesh.hasTangent)
+                    if (hasTangent)
                     {
                         var tangent = importedVertex.Tangent;
                         AsFbxMeshElementTangentAdd(mesh, 0, tangent.X, tangent.Y, tangent.Z, tangent.W);
                     }
 
-                    if (importedMesh.hasColor)
+                    if (hasColor)
                     {
                         var color = importedVertex.Color;
                         AsFbxMeshElementVertexColorAdd(mesh, 0, color.R, color.G, color.B, color.A);
                     }
 
-                    if (hasBones && importedVertex.BoneIndices != null)
+                    if (hasBones && importedVertex.BoneIndices != null && importedVertex.Weights != null)
                     {
                         var boneIndices = importedVertex.BoneIndices;
                         var boneWeights = importedVertex.Weights;
@@ -403,7 +431,6 @@ namespace AssetStudio.FbxInterop
                         }
                     }
                 }
-
 
                 if (hasBones)
                 {
@@ -494,7 +521,7 @@ namespace AssetStudio.FbxInterop
 
                     AsFbxAnimPrepareStackAndLayer(_pContext, pAnimContext, takeName);
 
-                    ExportKeyframedAnimation(rootFrame, importedAnimation, pAnimContext, filterPrecision);
+                    ExportKeyframedAnimation(importedAnimation, pAnimContext, filterPrecision);
                 }
             }
             finally
@@ -503,44 +530,57 @@ namespace AssetStudio.FbxInterop
             }
         }
 
-        private void ExportKeyframedAnimation(ImportedFrame rootFrame, ImportedKeyframedAnimation parser, IntPtr pAnimContext, float filterPrecision)
+        private void ExportKeyframedAnimation(ImportedKeyframedAnimation parser, IntPtr pAnimContext, float filterPrecision)
         {
-            foreach (var track in parser.TrackList)
+            var trackList = parser.TrackList;
+            if (trackList == null)
             {
-                if (track.Path == null)
+                return;
+            }
+
+            for (var t = 0; t < trackList.Count; t++)
+            {
+                var track = trackList[t];
+                if (track.Path == null || !_pathToNode.TryGetValue(track.Path, out var pNode) || pNode == IntPtr.Zero)
                 {
                     continue;
                 }
-
-                var frame = rootFrame.FindFrameByPath(track.Path);
-
-                if (frame == null)
-                {
-                    continue;
-                }
-
-                var pNode = _frameToNode[frame];
 
                 AsFbxAnimLoadCurves(pNode, pAnimContext);
 
                 AsFbxAnimBeginKeyModify(pAnimContext);
 
-                foreach (var scaling in track.Scalings)
+                var scalings = track.Scalings;
+                if (scalings != null)
                 {
-                    var value = scaling.value;
-                    AsFbxAnimAddScalingKey(pAnimContext, scaling.time, value.X, value.Y, value.Z);
+                    for (var i = 0; i < scalings.Count; i++)
+                    {
+                        var scaling = scalings[i];
+                        var value = scaling.value;
+                        AsFbxAnimAddScalingKey(pAnimContext, scaling.time, value.X, value.Y, value.Z);
+                    }
                 }
 
-                foreach (var rotation in track.Rotations)
+                var rotations = track.Rotations;
+                if (rotations != null)
                 {
-                    var value = rotation.value;
-                    AsFbxAnimAddRotationKey(pAnimContext, rotation.time, value.X, value.Y, value.Z);
+                    for (var i = 0; i < rotations.Count; i++)
+                    {
+                        var rotation = rotations[i];
+                        var value = rotation.value;
+                        AsFbxAnimAddRotationKey(pAnimContext, rotation.time, value.X, value.Y, value.Z);
+                    }
                 }
 
-                foreach (var translation in track.Translations)
+                var translations = track.Translations;
+                if (translations != null)
                 {
-                    var value = translation.value;
-                    AsFbxAnimAddTranslationKey(pAnimContext, translation.time, value.X, value.Y, value.Z);
+                    for (var i = 0; i < translations.Count; i++)
+                    {
+                        var translation = translations[i];
+                        var value = translation.value;
+                        AsFbxAnimAddTranslationKey(pAnimContext, translation.time, value.X, value.Y, value.Z);
+                    }
                 }
 
                 AsFbxAnimEndKeyModify(pAnimContext);
@@ -555,6 +595,7 @@ namespace AssetStudio.FbxInterop
 
                     if (channelCount > 0)
                     {
+                        var keyframes = blendShape.Keyframes;
                         for (var channelIndex = 0; channelIndex < channelCount; channelIndex += 1)
                         {
                             if (!AsFbxAnimIsBlendShapeChannelMatch(pAnimContext, channelIndex, blendShape.ChannelName))
@@ -564,9 +605,13 @@ namespace AssetStudio.FbxInterop
 
                             AsFbxAnimBeginBlendShapeAnimCurve(pAnimContext, channelIndex);
 
-                            foreach (var keyframe in blendShape.Keyframes)
+                            if (keyframes != null)
                             {
-                                AsFbxAnimAddBlendShapeKeyframe(pAnimContext, keyframe.time, keyframe.value);
+                                for (var k = 0; k < keyframes.Count; k++)
+                                {
+                                    var keyframe = keyframes[k];
+                                    AsFbxAnimAddBlendShapeKeyframe(pAnimContext, keyframe.time, keyframe.value);
+                                }
                             }
 
                             AsFbxAnimEndBlendShapeAnimCurve(pAnimContext);
@@ -583,16 +628,13 @@ namespace AssetStudio.FbxInterop
                 return;
             }
 
-            foreach (var morph in morphList)
+            for (var m = 0; m < morphList.Count; m++)
             {
-                var frame = rootFrame.FindFrameByPath(morph.Path);
-
-                if (frame == null)
+                var morph = morphList[m];
+                if (morph.Path == null || !_pathToNode.TryGetValue(morph.Path, out var pNode) || pNode == IntPtr.Zero)
                 {
                     continue;
                 }
-
-                var pNode = _frameToNode[frame];
 
                 var pMorphContext = IntPtr.Zero;
 
@@ -602,32 +644,47 @@ namespace AssetStudio.FbxInterop
 
                     AsFbxMorphInitializeContext(_pContext, pMorphContext, pNode);
 
-                    foreach (var channel in morph.Channels)
+                    var channels = morph.Channels;
+                    if (channels != null)
                     {
-                        AsFbxMorphAddBlendShapeChannel(_pContext, pMorphContext, channel.Name);
-
-                        for (var i = 0; i < channel.KeyframeList.Count; i++)
+                        for (var c = 0; c < channels.Count; c++)
                         {
-                            var keyframe = channel.KeyframeList[i];
+                            var channel = channels[c];
+                            AsFbxMorphAddBlendShapeChannel(_pContext, pMorphContext, channel.Name);
 
-                            AsFbxMorphAddBlendShapeChannelShape(_pContext, pMorphContext, keyframe.Weight, i == 0 ? channel.Name : $"{channel.Name}_{i + 1}");
-
-                            AsFbxMorphCopyBlendShapeControlPoints(pMorphContext);
-
-                            foreach (var vertex in keyframe.VertexList)
+                            var keyframeList = channel.KeyframeList;
+                            if (keyframeList != null)
                             {
-                                var v = vertex.Vertex.Vertex;
-                                AsFbxMorphSetBlendShapeVertex(pMorphContext, vertex.Index, v.X, v.Y, v.Z);
-                            }
-
-                            if (keyframe.hasNormals)
-                            {
-                                AsFbxMorphCopyBlendShapeControlPointsNormal(pMorphContext);
-
-                                foreach (var vertex in keyframe.VertexList)
+                                for (var i = 0; i < keyframeList.Count; i++)
                                 {
-                                    var v = vertex.Vertex.Normal;
-                                    AsFbxMorphSetBlendShapeVertexNormal(pMorphContext, vertex.Index, v.X, v.Y, v.Z);
+                                    var keyframe = keyframeList[i];
+
+                                    AsFbxMorphAddBlendShapeChannelShape(_pContext, pMorphContext, keyframe.Weight, i == 0 ? channel.Name : $"{channel.Name}_{i + 1}");
+
+                                    AsFbxMorphCopyBlendShapeControlPoints(pMorphContext);
+
+                                    var vertexList = keyframe.VertexList;
+                                    if (vertexList != null)
+                                    {
+                                        for (var v = 0; v < vertexList.Count; v++)
+                                        {
+                                            var vertex = vertexList[v];
+                                            var vert = vertex.Vertex.Vertex;
+                                            AsFbxMorphSetBlendShapeVertex(pMorphContext, vertex.Index, vert.X, vert.Y, vert.Z);
+                                        }
+
+                                        if (keyframe.hasNormals)
+                                        {
+                                            AsFbxMorphCopyBlendShapeControlPointsNormal(pMorphContext);
+
+                                            for (var v = 0; v < vertexList.Count; v++)
+                                            {
+                                                var vertex = vertexList[v];
+                                                var norm = vertex.Vertex.Normal;
+                                                AsFbxMorphSetBlendShapeVertexNormal(pMorphContext, vertex.Index, norm.X, norm.Y, norm.Z);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

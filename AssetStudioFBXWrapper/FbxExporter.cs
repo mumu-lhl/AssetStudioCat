@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -78,7 +78,7 @@ namespace AssetStudio.FbxInterop
 
                 PrepareMaterials();
 
-                ExportMeshFrames(_imported.RootFrame, meshFrames);
+                ExportMeshFrames(meshFrames);
             }
             else
             {
@@ -155,11 +155,57 @@ namespace AssetStudio.FbxInterop
             _context.PrepareMaterials(_imported.MaterialList.Count, _imported.TextureList.Count);
         }
 
-        private void ExportMeshFrames(ImportedFrame rootFrame, List<ImportedFrame> meshFrames)
+        private void ExportMeshFrames(List<ImportedFrame> meshFrames)
         {
-            foreach (var meshFrame in meshFrames)
+            var meshList = _imported.MeshList;
+            var meshMap = new Dictionary<string, ImportedMesh>(meshList?.Count ?? 0);
+            if (meshList != null)
             {
-                _context.ExportMeshFromFrame(rootFrame, meshFrame, _imported.MeshList, _imported.MaterialList, _imported.TextureList, _settings);
+                for (var i = 0; i < meshList.Count; i++)
+                {
+                    var mesh = meshList[i];
+                    if (mesh.Path != null && !meshMap.ContainsKey(mesh.Path))
+                    {
+                        meshMap[mesh.Path] = mesh;
+                    }
+                }
+            }
+
+            var materialList = _imported.MaterialList;
+            var materialMap = new Dictionary<string, ImportedMaterial>(materialList?.Count ?? 0);
+            if (materialList != null)
+            {
+                for (var i = 0; i < materialList.Count; i++)
+                {
+                    var mat = materialList[i];
+                    if (mat.Name != null && !materialMap.ContainsKey(mat.Name))
+                    {
+                        materialMap[mat.Name] = mat;
+                    }
+                }
+            }
+
+            var textureList = _imported.TextureList;
+            var textureMap = new Dictionary<string, ImportedTexture>(textureList?.Count ?? 0);
+            if (textureList != null)
+            {
+                for (var i = 0; i < textureList.Count; i++)
+                {
+                    var tex = textureList[i];
+                    if (tex.Name != null && !textureMap.ContainsKey(tex.Name))
+                    {
+                        textureMap[tex.Name] = tex;
+                    }
+                }
+            }
+
+            for (var i = 0; i < meshFrames.Count; i++)
+            {
+                var meshFrame = meshFrames[i];
+                if (meshMap.TryGetValue(meshFrame.Path, out var mesh))
+                {
+                    _context.ExportMeshFromFrame(meshFrame, mesh, materialMap, textureMap, _settings);
+                }
             }
         }
 
@@ -179,6 +225,7 @@ namespace AssetStudio.FbxInterop
 
         private static void SearchHierarchy(ImportedFrame rootFrame, List<ImportedMesh> meshList, HashSet<string> exportFrames)
         {
+            var frameByPath = new Dictionary<string, ImportedFrame>();
             var frameStack = new Stack<ImportedFrame>();
 
             frameStack.Push(rootFrame);
@@ -186,42 +233,43 @@ namespace AssetStudio.FbxInterop
             while (frameStack.Count > 0)
             {
                 var frame = frameStack.Pop();
-
-                var meshListSome = ImportedHelpers.FindMesh(frame.Path, meshList);
-
-                if (meshListSome != null)
-                {
-                    var parent = frame;
-
-                    while (parent != null)
-                    {
-                        exportFrames.Add(parent.Path);
-                        parent = parent.Parent;
-                    }
-
-                    var boneList = meshListSome.BoneList;
-
-                    if (boneList != null)
-                    {
-                        foreach (var bone in boneList)
-                        {
-                            if (!exportFrames.Contains(bone.Path))
-                            {
-                                var boneParent = rootFrame.FindFrameByPath(bone.Path);
-
-                                while (boneParent != null)
-                                {
-                                    exportFrames.Add(boneParent.Path);
-                                    boneParent = boneParent.Parent;
-                                }
-                            }
-                        }
-                    }
-                }
+                frameByPath[frame.Path] = frame;
 
                 for (var i = frame.Count - 1; i >= 0; i -= 1)
                 {
                     frameStack.Push(frame[i]);
+                }
+            }
+
+            for (var m = 0; m < meshList.Count; m++)
+            {
+                var mesh = meshList[m];
+                if (mesh.Path == null || !frameByPath.TryGetValue(mesh.Path, out var meshFrame))
+                {
+                    continue;
+                }
+
+                var parent = meshFrame;
+                while (parent != null && exportFrames.Add(parent.Path))
+                {
+                    parent = parent.Parent;
+                }
+
+                var boneList = mesh.BoneList;
+                if (boneList != null)
+                {
+                    for (var b = 0; b < boneList.Count; b++)
+                    {
+                        var bone = boneList[b];
+                        if (bone.Path != null && !exportFrames.Contains(bone.Path) && frameByPath.TryGetValue(bone.Path, out var boneFrame))
+                        {
+                            var boneParent = boneFrame;
+                            while (boneParent != null && exportFrames.Add(boneParent.Path))
+                            {
+                                boneParent = boneParent.Parent;
+                            }
+                        }
+                    }
                 }
             }
         }
