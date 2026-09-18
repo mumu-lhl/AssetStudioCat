@@ -182,6 +182,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void SelectAssemblyDirectory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = _localizer["SelectAssemblyFolder"],
+            AllowMultiple = false,
+        });
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } path)
+        {
+            viewModel.SetAssemblyDirectory(path);
+        }
+    }
+
     private async void ExtractOpenedSources(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel) return;

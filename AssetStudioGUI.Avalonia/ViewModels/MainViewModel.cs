@@ -3,6 +3,7 @@ using System.Diagnostics;
 using AssetStudio;
 using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
+using AssetStudio.AppCore.Decompilation;
 using AssetStudio.AppCore.Exporting;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Inspection;
@@ -23,6 +24,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly AppDirectories _directories;
     private readonly AppSettingsStore? _settingsStore;
     private readonly AppLocalizer _localizer;
+    private readonly ICSharpDecompilerService _decompilerService = new CSharpDecompilerService();
     private string _allTypesLabel;
     private DiskAssetIndex? _currentIndex;
     private AssetPreviewService? _previewService;
@@ -55,6 +57,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public AssetExportService? ExportService => _exportService;
     public GameObjectExportService? GameObjectExportService => _gameObjectExportService;
     public AnimatorExportService? AnimatorExportService => _animatorExportService;
+    public ICSharpDecompilerService DecompilerService => _decompilerService;
+    public string? AssemblyDirectory => _decompilerService.AssemblyDirectory;
+    public bool HasAssemblyDirectory => !string.IsNullOrEmpty(_decompilerService.AssemblyDirectory);
     public long TotalAssetCount => _totalAssetCount;
 
     public MainViewModel()
@@ -80,6 +85,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AssetInformation = _localizer["NoAssetSelected"];
         DumpText = _localizer["SelectAssetLoadDump"];
         _localizer.PropertyChanged += LocalizerChanged;
+
+        if (!string.IsNullOrEmpty(settings.AssemblyDirectory))
+        {
+            _decompilerService.AssemblyDirectory = settings.AssemblyDirectory;
+        }
 
         if (settings.EnableHttpApi)
         {
@@ -273,6 +283,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanExportAnimator))]
     [NotifyPropertyChangedFor(nameof(CanPlayAudio))]
+    [NotifyPropertyChangedFor(nameof(CanPickAssemblyDirectory))]
     public partial AssetRowViewModel? SelectedAsset { get; set; }
 
     [ObservableProperty]
@@ -351,9 +362,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public bool CanPlayAudio => SelectedAsset?.Type == "AudioClip" && !IsExportBusy;
 
+    public bool CanPickAssemblyDirectory => SelectedAsset?.Type == "MonoScript";
+
     public bool HasBatchSelection => _selectedAssets.Count > 0;
 
     public int SelectedAssetCount => _selectedAssets.Count;
+
+    public void SetAssemblyDirectory(string? path)
+    {
+        _decompilerService.AssemblyDirectory = path;
+        Settings.AssemblyDirectory = path;
+        if (_settingsStore is not null)
+        {
+            _ = _settingsStore.SaveAsync(Settings);
+        }
+        OnPropertyChanged(nameof(AssemblyDirectory));
+        OnPropertyChanged(nameof(HasAssemblyDirectory));
+        StatusText = string.IsNullOrEmpty(path)
+            ? _localizer["AssemblyDirectoryNotConfigured"]
+            : _localizer.Format("AssemblyFolderSet", path);
+        if (SelectedAsset?.Type == "MonoScript")
+        {
+            _ = SelectAssetAsync(SelectedAsset);
+        }
+    }
 
     public async Task OpenSourceAsync(string sourcePath, bool forceRebuild = false)
     {
@@ -394,15 +426,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _sourcePaths = sourcePaths.Select(Path.GetFullPath).ToArray();
             _openedAsFileSelection = fileSelection;
             _currentIndex = result.Index;
+            if (sourcePaths.Count > 0)
+            {
+                var detected = AssemblyDirectoryDetector.TryDetectManagedDirectory(sourcePaths[0]);
+                if (detected is not null)
+                {
+                    _decompilerService.RegisterProbePath(detected);
+                    if (string.IsNullOrEmpty(_decompilerService.AssemblyDirectory))
+                    {
+                        _decompilerService.AssemblyDirectory = detected;
+                    }
+                }
+            }
+
             _previewService = new AssetPreviewService(
                 new AssetObjectLoader(settings, layout),
                 new MemoryPreviewCache(settings.PreviewCacheMegabytes),
-                settings);
+                settings,
+                _decompilerService);
             _inspectionService = new AssetInspectionService(new AssetObjectLoader(settings, layout));
             _exportService = new AssetExportService(new AssetObjectLoader(settings, layout));
             _animatorExportService = new AnimatorExportService(new AssetObjectLoader(settings, layout), settings);
             _gameObjectExportService = new GameObjectExportService(new AssetObjectLoader(settings, layout), settings);
-            _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings);
+            _convertedExportService = new ConvertedAssetExportService(new AssetObjectLoader(settings, layout), settings, _decompilerService);
             _batchExportService = new BatchExportService(_exportService, _convertedExportService, _animatorExportService);
             _bundleExtractionService = new BundleExtractionService(settings, layout);
             var typeCounts = await _currentIndex.GetTypeCountsAsync(cancellationToken);
@@ -1252,6 +1298,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _pageCancellation?.Dispose();
         PreviewImage?.Dispose();
         _httpServer?.Dispose();
+        _decompilerService.Dispose();
     }
 
     private static AppSettings CreateDefaultSettings()

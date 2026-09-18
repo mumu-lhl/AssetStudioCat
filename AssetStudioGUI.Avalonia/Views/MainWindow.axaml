@@ -28,6 +28,7 @@
         <MenuItem Header="{Binding L[OpenFolder]}" Click="OpenFolder" />
         <MenuItem Name="RecentMenu" Header="{Binding L[OpenRecent]}" />
         <Separator />
+        <MenuItem Header="{Binding L[SelectAssemblyDirectory]}" Click="SelectAssemblyDirectory" />
         <MenuItem Header="{Binding L[ExtractOpenedBundles]}" IsEnabled="{Binding HasSource}" Click="ExtractOpenedSources" />
         <MenuItem Header="{Binding L[RebuildIndex]}" IsEnabled="{Binding HasSource}" Click="RebuildIndex" />
       </MenuItem>
@@ -329,6 +330,7 @@
                        Text="{Binding PreviewMessage}" TextWrapping="Wrap" />
             <StackPanel Grid.Row="2" Margin="12,0,12,12" Spacing="6">
               <Button HorizontalAlignment="Center" Content="{Binding L[PlayInSystemPlayer]}" IsEnabled="{Binding CanPlayAudio}" IsVisible="{Binding CanPlayAudio}" Click="PlayAudio" />
+              <Button HorizontalAlignment="Center" Content="{Binding L[SelectAssemblyDirectory]}" IsVisible="{Binding CanPickAssemblyDirectory}" Click="SelectAssemblyDirectory" />
               <ProgressBar Height="5" IsIndeterminate="True" IsVisible="{Binding IsPreviewBusy}" />
             </StackPanel>
           </Grid>

@@ -39,6 +39,15 @@
           <Button Grid.Column="1" Margin="8,0,0,0" Content="{Binding L[Browse]}" Click="BrowseCacheRoot" />
         </Grid>
 
+        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[AssemblyDirectory]}" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBox Grid.Column="0" Text="{Binding AssemblyDirectory}" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Content="{Binding L[Browse]}" Click="BrowseAssemblyDirectory" />
+        </Grid>
+        <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"
+                   Text="{Binding L[AssemblyDirectoryHelp]}"
+                   TextWrapping="Wrap" />
+
         <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{Binding L[OverrideUnityVersion]}" />
         <TextBox Text="{Binding CustomUnityVersion}" PlaceholderText="{Binding L[UnityVersionExample]}" />
         <TextBlock Foreground="{DynamicResource ThemeForegroundLowBrush}"

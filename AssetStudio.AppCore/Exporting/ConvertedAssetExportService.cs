@@ -3,6 +3,7 @@ using System.Text;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Loading;
 using AssetStudio.AppCore.Configuration;
+using AssetStudio.AppCore.Decompilation;
 using global::AssetStudio;
 
 namespace AssetStudio.AppCore.Exporting;
@@ -12,11 +13,16 @@ public sealed class ConvertedAssetExportService
     private const int BufferSize = 128 * 1024;
     private readonly AssetObjectLoader _objectLoader;
     private readonly AppSettings _settings;
+    private readonly ICSharpDecompilerService? _decompilerService;
 
-    public ConvertedAssetExportService(AssetObjectLoader objectLoader, AppSettings settings)
+    public ConvertedAssetExportService(
+        AssetObjectLoader objectLoader,
+        AppSettings settings,
+        ICSharpDecompilerService? decompilerService = null)
     {
         _objectLoader = objectLoader;
         _settings = settings;
+        _decompilerService = decompilerService;
     }
 
     public Task<AssetExportResult> ExportAsync(
@@ -60,8 +66,60 @@ public sealed class ConvertedAssetExportService
                 ".txt"),
             Font font => ExportFont(font, entry, outputDirectory),
             Mesh mesh => ExportMesh(mesh, entry, outputDirectory, cancellationToken),
+            MonoScript monoScript => ExportMonoScript(monoScript, entry, outputDirectory, cancellationToken),
             _ => throw new NotSupportedException($"Converted export for {entry.TypeName} is not implemented."),
         };
+    }
+
+    private AssetExportResult ExportMonoScript(
+        MonoScript script,
+        AssetIndexEntry entry,
+        string outputDirectory,
+        CancellationToken cancellationToken)
+    {
+        string? code = null;
+        if (_decompilerService is not null)
+        {
+            code = _decompilerService.DecompileTypeAsync(
+                script.m_AssemblyName,
+                script.m_ClassName,
+                script.m_Namespace,
+                cancellationToken).GetAwaiter().GetResult();
+        }
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"// Decompilation stub for {entry.Name}");
+            sb.AppendLine($"// Assembly: {script.m_AssemblyName}");
+            sb.AppendLine($"// PathID: {entry.PathId}");
+            sb.AppendLine($"// Notice: Assembly '{script.m_AssemblyName}' could not be resolved. Configure the Managed directory to decompile full source.");
+            sb.AppendLine();
+            if (!string.IsNullOrWhiteSpace(script.m_Namespace))
+            {
+                sb.AppendLine($"namespace {script.m_Namespace}");
+                sb.AppendLine("{");
+                sb.AppendLine($"    public class {script.m_ClassName}");
+                sb.AppendLine("    {");
+                sb.AppendLine("    }");
+                sb.AppendLine("}");
+            }
+            else
+            {
+                sb.AppendLine($"public class {script.m_ClassName}");
+                sb.AppendLine("{");
+                sb.AppendLine("}");
+            }
+            code = sb.ToString();
+        }
+
+        var path = GetAvailablePath(outputDirectory, entry, ".cs");
+        WriteAtomically(path, temporaryPath =>
+        {
+            using var writer = new StreamWriter(temporaryPath, false, new UTF8Encoding(false), BufferSize);
+            writer.Write(code);
+        });
+        return new AssetExportResult([path]);
     }
 
     private static AssetExportResult ExportTexture(

@@ -6,6 +6,7 @@ using AssetStudio.AppCore.Caching;
 using AssetStudio.AppCore.Configuration;
 using AssetStudio.AppCore.Indexing;
 using AssetStudio.AppCore.Loading;
+using AssetStudio.AppCore.Decompilation;
 using global::AssetStudio;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -18,12 +19,18 @@ public sealed class AssetPreviewService
     private readonly AssetObjectLoader _objectLoader;
     private readonly MemoryPreviewCache _cache;
     private readonly AppSettings _settings;
+    private readonly ICSharpDecompilerService? _decompilerService;
 
-    public AssetPreviewService(AssetObjectLoader objectLoader, MemoryPreviewCache cache, AppSettings settings)
+    public AssetPreviewService(
+        AssetObjectLoader objectLoader,
+        MemoryPreviewCache cache,
+        AppSettings settings,
+        ICSharpDecompilerService? decompilerService = null)
     {
         _objectLoader = objectLoader;
         _cache = cache;
         _settings = settings;
+        _decompilerService = decompilerService;
     }
 
     public bool Supports(string typeName) => typeName is
@@ -59,7 +66,7 @@ public sealed class AssetPreviewService
             Shader shader => PreviewText(entry, shader.Convert()),
             Material material => PreviewMaterial(entry, material),
             AudioClip audio => PreviewAudio(entry, audio),
-            MonoScript script => PreviewMonoScript(entry, script),
+            MonoScript script => await PreviewMonoScriptAsync(entry, script, _decompilerService, cancellationToken),
             MonoBehaviour monoBehaviour => PreviewMonoBehaviour(entry, monoBehaviour),
             _ => throw new NotSupportedException($"Preview for {entry.TypeName} is not implemented."),
         };
@@ -108,11 +115,35 @@ public sealed class AssetPreviewService
             DescribeBasic(entry, truncated ? "Text preview truncated" : "Text preview"));
     }
 
-    private static AssetPreview PreviewMonoScript(AssetIndexEntry entry, MonoScript script)
+    private static async Task<AssetPreview> PreviewMonoScriptAsync(
+        AssetIndexEntry entry,
+        MonoScript script,
+        ICSharpDecompilerService? decompiler,
+        CancellationToken cancellationToken)
     {
         var qualifiedName = string.IsNullOrWhiteSpace(script.m_Namespace)
             ? script.m_ClassName
             : $"{script.m_Namespace}.{script.m_ClassName}";
+
+        if (decompiler is not null)
+        {
+            var code = await decompiler.DecompileTypeAsync(
+                script.m_AssemblyName,
+                script.m_ClassName,
+                script.m_Namespace,
+                cancellationToken);
+
+            if (!string.IsNullOrEmpty(code))
+            {
+                var truncated = code.Length > MaximumTextCharacters;
+                var previewText = truncated
+                    ? code[..MaximumTextCharacters] + "\n\n[Preview truncated. Use converted export for the complete C# code.]"
+                    : code;
+                var description = DescribeBasic(entry, $"C# decompiled from {script.m_AssemblyName}");
+                return new AssetPreview(null, previewText, description);
+            }
+        }
+
         var details = new StringBuilder()
             .AppendLine($"Name: {entry.Name}")
             .AppendLine($"Class: {DisplayValue(qualifiedName)}")
@@ -120,8 +151,11 @@ public sealed class AssetPreviewService
             .AppendLine($"Assembly: {DisplayValue(script.m_AssemblyName)}")
             .AppendLine($"PathID: {entry.PathId}")
             .AppendLine($"Stored size: {entry.ByteSize:N0} bytes")
+            .AppendLine()
+            .AppendLine($"// [C# Decompilation] Assembly '{script.m_AssemblyName}' could not be resolved.")
+            .AppendLine($"// Specify the Managed directory in Settings or click 'Select Assembly Directory' to view decompiled source.")
             .ToString();
-        return new AssetPreview(null, details, DescribeBasic(entry, "MonoScript metadata"));
+        return new AssetPreview(null, details, DescribeBasic(entry, "MonoScript metadata (Assembly not found)"));
     }
 
     private static AssetPreview PreviewMonoBehaviour(AssetIndexEntry entry, MonoBehaviour monoBehaviour)

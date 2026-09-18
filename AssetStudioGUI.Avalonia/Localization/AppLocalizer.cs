@@ -205,6 +205,12 @@ public sealed class AppLocalizer : INotifyPropertyChanged
         ["MeshSmoothNormals"] = "Smooth Normals",
         ["ResetCamera"] = "Reset View",
         ["MeshInteractionTip"] = "L-drag: Rotate | R/M-drag: Pan | Wheel: Zoom | Dbl-click: Reset",
+        ["AssemblyDirectory"] = "Assembly directory (Managed)",
+        ["SelectAssemblyDirectory"] = "Select Assembly Directory…",
+        ["SelectAssemblyFolder"] = "Select assembly directory (containing Managed DLLs)",
+        ["AssemblyDirectoryHelp"] = "Directory containing Managed assemblies (*.dll) used to decompile MonoScript to C# code.",
+        ["AssemblyFolderDetected"] = "Managed assembly folder detected: {0}",
+        ["AssemblyFolderSet"] = "Assembly directory set to: {0}",
     };
 
     private static readonly IReadOnlyDictionary<string, string> SimplifiedChineseStrings = new Dictionary<string, string>
@@ -402,6 +408,12 @@ public sealed class AppLocalizer : INotifyPropertyChanged
         ["MeshSmoothNormals"] = "平滑法线",
         ["ResetCamera"] = "复位视角",
         ["MeshInteractionTip"] = "左键旋转 | 右键/中键平移 | 滚轮缩放 | 双击复位",
+        ["AssemblyDirectory"] = "程序集目录 (Managed)",
+        ["SelectAssemblyDirectory"] = "选择程序集目录…",
+        ["SelectAssemblyFolder"] = "选择程序集目录 (包含 Managed DLLs)",
+        ["AssemblyDirectoryHelp"] = "包含 Managed 程序集 (*.dll) 的目录，用于将 MonoScript 反编译为 C# 代码。",
+        ["AssemblyFolderDetected"] = "检测到 Managed 程序集目录: {0}",
+        ["AssemblyFolderSet"] = "程序集目录已设置为: {0}",
     };
 
     private string _language = English;

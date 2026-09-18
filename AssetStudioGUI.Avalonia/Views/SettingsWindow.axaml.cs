@@ -47,6 +47,18 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private async void BrowseAssemblyDirectory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel viewModel)
+        {
+            var selected = await PickFolderAsync(_localizer["SelectAssemblyFolder"]);
+            if (selected is not null)
+            {
+                viewModel.AssemblyDirectory = selected;
+            }
+        }
+    }
+
     private async Task<string?> PickFolderAsync(string title)
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
