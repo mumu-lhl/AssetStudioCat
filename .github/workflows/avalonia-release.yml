@@ -24,10 +24,15 @@ jobs:
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Test AppCore
         run: dotnet test AssetStudio.AppCore.Tests/AssetStudio.AppCore.Tests.csproj --configuration Release
+
+      - name: Build CLI
+        run: dotnet build AssetStudioCLI/AssetStudioCLI.csproj --configuration Release
 
   publish:
     name: Publish ${{ matrix.rid }}
@@ -57,7 +62,9 @@ jobs:
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Set up MSBuild
         if: matrix.rid == 'win-x64'
@@ -77,7 +84,7 @@ jobs:
         shell: pwsh
         run: msbuild AssetStudioFBXNative/AssetStudioFBXNative.vcxproj /p:Configuration=Release /p:Platform=x64 /m
 
-      - name: Publish self-contained application
+      - name: Publish self-contained applications
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
@@ -89,6 +96,14 @@ jobs:
             -p:Version="$version" `
             -p:DebugType=None `
             -p:DebugSymbols=false
+          dotnet publish AssetStudioCLI/AssetStudioCLI.csproj `
+            --configuration Release `
+            --runtime "${{ matrix.rid }}" `
+            --self-contained true `
+            --output "artifacts/publish-cli/${{ matrix.rid }}" `
+            -p:Version="$version" `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
 
       - name: Create release archive
         shell: pwsh
@@ -96,14 +111,20 @@ jobs:
           if ("${{ matrix.rid }}" -eq "win-x64") {
             Copy-Item `
               "AssetStudioFBXNative/bin/x64/Release/AssetStudioFBXNative.dll" `
-              "artifacts/publish/${{ matrix.rid }}/AssetStudioFBXNative.dll"
+              "artifacts/publish/${{ matrix.rid }}/AssetStudioFBXNative.dll" -Force
+            Copy-Item `
+              "AssetStudioFBXNative/bin/x64/Release/AssetStudioFBXNative.dll" `
+              "artifacts/publish-cli/${{ matrix.rid }}/AssetStudioFBXNative.dll" -Force
           }
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
           $baseName = "AssetStudioCat-${{ github.ref_name }}-${{ matrix.rid }}"
+          $cliBaseName = "AssetStudioCat-CLI-${{ github.ref_name }}-${{ matrix.rid }}"
           if ("${{ matrix.archive }}" -eq "zip") {
             Compress-Archive -Path "artifacts/publish/${{ matrix.rid }}/*" -DestinationPath "artifacts/release/$baseName.zip"
+            Compress-Archive -Path "artifacts/publish-cli/${{ matrix.rid }}/*" -DestinationPath "artifacts/release/$cliBaseName.zip"
           } else {
             tar -czf "artifacts/release/$baseName.tar.gz" -C "artifacts/publish/${{ matrix.rid }}" .
+            tar -czf "artifacts/release/$cliBaseName.tar.gz" -C "artifacts/publish-cli/${{ matrix.rid }}" .
           }
 
       - name: Upload release archive

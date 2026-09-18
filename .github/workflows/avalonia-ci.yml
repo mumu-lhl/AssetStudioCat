@@ -1,4 +1,4 @@
-name: Avalonia GUI CI
+name: CI
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: avalonia-ci-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -24,14 +24,17 @@ env:
 
 jobs:
   build-and-test:
-    name: ${{ matrix.os }} / .NET 10
+    name: ${{ matrix.os }} / .NET 9 & 10
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-x64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -41,7 +44,9 @@ jobs:
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Restore tests
         run: dotnet restore AssetStudio.AppCore.Tests/AssetStudio.AppCore.Tests.csproj
@@ -49,8 +54,33 @@ jobs:
       - name: Restore Avalonia GUI
         run: dotnet restore AssetStudioGUI.Avalonia/AssetStudioGUI.Avalonia.csproj
 
+      - name: Restore CLI
+        run: dotnet restore AssetStudioCLI/AssetStudioCLI.csproj
+
       - name: Run AppCore tests
         run: dotnet test AssetStudio.AppCore.Tests/AssetStudio.AppCore.Tests.csproj --configuration Release --no-restore --logger "console;verbosity=normal"
 
       - name: Build Avalonia GUI
         run: dotnet build AssetStudioGUI.Avalonia/AssetStudioGUI.Avalonia.csproj --configuration Release --no-restore
+
+      - name: Build CLI
+        run: dotnet build AssetStudioCLI/AssetStudioCLI.csproj --configuration Release --no-restore
+
+      - name: Publish CLI
+        shell: pwsh
+        run: |
+          dotnet publish AssetStudioCLI/AssetStudioCLI.csproj `
+            --configuration Release `
+            --runtime "${{ matrix.rid }}" `
+            --self-contained true `
+            --output "artifacts/cli" `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AssetStudioModCLI-${{ matrix.rid }}
+          path: artifacts/cli
+          if-no-files-found: error
+          retention-days: 7
