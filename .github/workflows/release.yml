@@ -127,11 +127,20 @@ jobs:
             tar -czf "artifacts/release/$cliBaseName.tar.gz" -C "artifacts/publish-cli/${{ matrix.rid }}" .
           }
 
-      - name: Upload release archive
+      - name: Upload GUI release archive
         uses: actions/upload-artifact@v7
         with:
           name: AssetStudioCat-${{ matrix.rid }}
-          path: artifacts/release/*
+          path: artifacts/release/AssetStudioCat-${{ github.ref_name }}-${{ matrix.rid }}.${{ matrix.archive }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload CLI release archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: AssetStudioCat-CLI-${{ matrix.rid }}
+          path: artifacts/release/AssetStudioCat-CLI-${{ github.ref_name }}-${{ matrix.rid }}.${{ matrix.archive }}
           archive: false
           if-no-files-found: error
           retention-days: 14
