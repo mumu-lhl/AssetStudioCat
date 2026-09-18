@@ -1,20 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFrameworks>net472;net8.0-windows;net9.0-windows</TargetFrameworks>
+        <TargetFramework>net9.0-windows</TargetFramework>
         <UseWindowsForms>true</UseWindowsForms>
         <ApplicationIcon>Resources\as.ico</ApplicationIcon>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
         <AssemblyTitle>AssetStudioMod by aelurum</AssemblyTitle>
         <AssemblyName>AssetStudioModGUI</AssemblyName>
         <Version>0.19.0.0</Version>
         <Copyright>Copyright © Perfare 2018-2022; Copyright © aelurum 2021-2025</Copyright>
         <DebugType>embedded</DebugType>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(TargetFramework)' == 'net472' ">
-        <IsPublishable>false</IsPublishable>
-        <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
 
     <ItemGroup>
@@ -57,9 +53,6 @@
         <PackageReference Include="Microsoft-WindowsAPICodePack-Core-6.0" Version="1.1.7" />
         <PackageReference Include="Microsoft-WindowsAPICodePack-Shell-6.0" Version="1.1.7" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    </ItemGroup>
-
-    <ItemGroup Condition=" '$(TargetFramework)' != 'net472' ">
         <PackageReference Include="OpenTK.Graphics" Version="4.9.4" />
         <PackageReference Include="OpenTK.Windowing.Desktop" Version="4.9.4" />
         <Reference Include="OpenTK.WinForms">
@@ -67,19 +60,14 @@
         </Reference>
     </ItemGroup>
 
-    <ItemGroup Condition=" '$(TargetFramework)' == 'net472' ">
-        <PackageReference Include="OpenTK" Version="3.3.3" />
-        <PackageReference Include="OpenTK.GLControl" Version="3.3.3" />
-    </ItemGroup>
-
     <!-- Use local compiled win-x86 and win-x64 Texture2DDecoder libs, because libs from Kyaru.Texture2DDecoder.Windows were compiled with /MD flag -->
     
-    <Target Name="CopyExtraFilesPortable" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == '' OR '$(TargetFramework)' == 'net472' ">
+    <Target Name="CopyExtraFilesPortable" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == '' ">
         <Message Text="Copying extra files for $(TargetFramework)... " Importance="high" />
-        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="false" />
-        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="false" />
-        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="false" />
-        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="false" />
+        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="true" />
+        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="true" />
+        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="true" />
+        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="true" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x86\fmod.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="false" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x64\fmod.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="false" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x86\ooz.dll" DestinationFolder="$(TargetDir)runtimes\win-x86\native" ContinueOnError="false" />
@@ -100,13 +88,7 @@
         <Copy SourceFiles="$(TargetDir)runtimes\win-x64\native\ooz.dll" DestinationFolder="$(PublishDir)runtimes\win-x64\native" ContinueOnError="false" />
     </Target>
 
-    <!-- No need to publish net472 build of AssetStudioGUI -->
-    <Target Name="PublishNet472" AfterTargets="Publish" Condition=" '$(TargetFramework)' == 'net472' ">
-        <Message Text="%0a NOTE: Publishing net472 build of AssetStudioGUI was disabled." Importance="high" />
-        <Message Text=" Instead, use the binaries created after the build.%0a" Importance="high" />
-    </Target>
-
-    <Target Name="CopyExtraFilesWin86" AfterTargets="AfterBuild" Condition=" $(RuntimeIdentifier.Contains('-x86')) AND '$(TargetFramework)' != 'net472' ">
+    <Target Name="CopyExtraFilesWin86" AfterTargets="AfterBuild" Condition=" $(RuntimeIdentifier.Contains('-x86')) ">
         <Message Text="Copying extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
         <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
         <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
@@ -114,7 +96,7 @@
         <Copy SourceFiles="$(ProjectDir)Libraries\x86\ooz.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
     </Target>
 
-    <Target Name="CopyExtraFilesWin64" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == 'win-x64' AND '$(TargetFramework)' != 'net472' ">
+    <Target Name="CopyExtraFilesWin64" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == 'win-x64' ">
         <Message Text="Copying extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
         <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
         <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
@@ -122,7 +104,7 @@
         <Copy SourceFiles="$(ProjectDir)Libraries\x64\ooz.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
     </Target>
     
-    <Target Name="PublishExtraFilesWin" AfterTargets="Publish" Condition=" $(RuntimeIdentifier.Contains('win')) AND '$(TargetFramework)' != 'net472' ">
+    <Target Name="PublishExtraFilesWin" AfterTargets="Publish" Condition=" $(RuntimeIdentifier.Contains('win')) ">
         <Message Text="Publishing extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
         <Copy SourceFiles="$(TargetDir)\AssetStudioFBXNative.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
         <Copy SourceFiles="$(TargetDir)\Texture2DDecoderNative.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />

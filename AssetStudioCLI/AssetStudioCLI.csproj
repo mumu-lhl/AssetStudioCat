@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFrameworks>net472;net8.0;net9.0</TargetFrameworks>
+        <TargetFramework>net9.0</TargetFramework>
         <AssemblyTitle>AssetStudioMod by aelurum</AssemblyTitle>
         <AssemblyName>AssetStudioModCLI</AssemblyName>
         <Version>0.19.0.0</Version>
@@ -34,7 +34,7 @@
         <Copy SourceFiles="$(ProjectDir)Libraries\win-x64\ooz.dll" DestinationFolder="$(TargetDir)runtimes\win-x64\native" ContinueOnError="false" />
     </Target>
 
-    <Target Name="CopyExtraFilesPortableNet" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == '' AND '$(TargetFramework)' != 'net472' ">
+    <Target Name="CopyExtraFilesPortableNet" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == '' ">
         <Message Text="Copying other platforms extra files for $(TargetFramework)... " Importance="high" />
         <Copy SourceFiles="$(ProjectDir)Libraries\linux-x64\libAssetStudioFBXNative.so" DestinationFolder="$(TargetDir)runtimes\linux-x64\native" ContinueOnError="false" />
         <Copy SourceFiles="$(ProjectDir)Libraries\osx-x64\libAssetStudioFBXNative.dylib" DestinationFolder="$(TargetDir)runtimes\osx-x64\native" ContinueOnError="false" />
@@ -70,7 +70,7 @@
         <Copy SourceFiles="$(TargetDir)runtimes\win-x64\native\ooz.dll" DestinationFolder="$(PublishDir)runtimes\win-x64\native" ContinueOnError="false" />
     </Target>
 
-    <Target Name="PublishExtraFilesPortableNet" AfterTargets="Publish" Condition=" '$(RuntimeIdentifier)' == '' AND '$(TargetFramework)' != 'net472' ">
+    <Target Name="PublishExtraFilesPortableNet" AfterTargets="Publish" Condition=" '$(RuntimeIdentifier)' == '' ">
         <Message Text="Publishing other platforms extra files for Portable build ($(TargetFramework))... " Importance="high" />
         <Copy SourceFiles="$(TargetDir)runtimes\linux-x64\native\libAssetStudioFBXNative.so" DestinationFolder="$(PublishDir)runtimes\linux-x64\native" ContinueOnError="false" />
         <Copy SourceFiles="$(TargetDir)runtimes\osx-x64\native\libAssetStudioFBXNative.dylib" DestinationFolder="$(PublishDir)runtimes\osx-x64\native" ContinueOnError="false" />
