@@ -11,6 +11,7 @@
         <Version>0.19.0.0</Version>
         <Copyright>Copyright © Perfare 2018-2022; Copyright © aelurum 2021-2025</Copyright>
         <DebugType>embedded</DebugType>
+        <SolutionDir Condition="'$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*'">$(MSBuildThisFileDirectory)..\</SolutionDir>
     </PropertyGroup>
 
     <ItemGroup>
@@ -90,26 +91,26 @@
 
     <Target Name="CopyExtraFilesWin86" AfterTargets="AfterBuild" Condition=" $(RuntimeIdentifier.Contains('-x86')) ">
         <Message Text="Copying extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
-        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
-        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
+        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" Condition="Exists('$(SolutionDir)Texture2DDecoderNative\bin\Win32\$(Configuration)\Texture2DDecoderNative.dll')" ContinueOnError="true" />
+        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" Condition="Exists('$(SolutionDir)AssetStudioFBXNative\bin\Win32\$(Configuration)\AssetStudioFBXNative.dll')" ContinueOnError="true" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x86\fmod.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x86\ooz.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
     </Target>
 
     <Target Name="CopyExtraFilesWin64" AfterTargets="AfterBuild" Condition=" '$(RuntimeIdentifier)' == 'win-x64' ">
         <Message Text="Copying extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
-        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
-        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
+        <Copy SourceFiles="$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll" DestinationFolder="$(TargetDir)" Condition="Exists('$(SolutionDir)Texture2DDecoderNative\bin\x64\$(Configuration)\Texture2DDecoderNative.dll')" ContinueOnError="true" />
+        <Copy SourceFiles="$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll" DestinationFolder="$(TargetDir)" Condition="Exists('$(SolutionDir)AssetStudioFBXNative\bin\x64\$(Configuration)\AssetStudioFBXNative.dll')" ContinueOnError="true" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x64\fmod.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
         <Copy SourceFiles="$(ProjectDir)Libraries\x64\ooz.dll" DestinationFolder="$(TargetDir)" ContinueOnError="false" />
     </Target>
     
     <Target Name="PublishExtraFilesWin" AfterTargets="Publish" Condition=" $(RuntimeIdentifier.Contains('win')) ">
         <Message Text="Publishing extra files for $(RuntimeIdentifier)($(TargetFramework))... " Importance="high" />
-        <Copy SourceFiles="$(TargetDir)\AssetStudioFBXNative.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
-        <Copy SourceFiles="$(TargetDir)\Texture2DDecoderNative.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
-        <Copy SourceFiles="$(TargetDir)\fmod.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
-        <Copy SourceFiles="$(TargetDir)\ooz.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
+        <Copy SourceFiles="$(TargetDir)AssetStudioFBXNative.dll" DestinationFolder="$(PublishDir)" Condition="Exists('$(TargetDir)AssetStudioFBXNative.dll')" ContinueOnError="true" />
+        <Copy SourceFiles="$(TargetDir)Texture2DDecoderNative.dll" DestinationFolder="$(PublishDir)" Condition="Exists('$(TargetDir)Texture2DDecoderNative.dll')" ContinueOnError="true" />
+        <Copy SourceFiles="$(TargetDir)fmod.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
+        <Copy SourceFiles="$(TargetDir)ooz.dll" DestinationFolder="$(PublishDir)" ContinueOnError="false" />
     </Target>
 
 </Project>
